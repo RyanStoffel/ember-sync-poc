@@ -1,0 +1,19 @@
+{
+  "name": "ember-sync-poc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Proof of concept for Ember's live GitHub-to-Jira synchronization view",
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

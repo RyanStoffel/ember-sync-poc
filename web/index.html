@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ember workspace</title>
+    <style>
+      :root {
+        --canvas: #ffffff;
+        --canvas-subtle: #f6f8fa;
+        --canvas-inset: #eef1f4;
+        --overlay: #ffffff;
+        --border: #d0d7de;
+        --border-muted: #e3e8ee;
+        --fg: #1f2328;
+        --fg-muted: #59636e;
+        --fg-subtle: #818b98;
+        --accent: #0969da;
+        --accent-subtle: #ddf4ff;
+        --success: #1a7f37;
+        --success-subtle: #dafbe1;
+        --attention: #9a6700;
+        --attention-subtle: #fff8c5;
+        --danger: #cf222e;
+        --danger-subtle: #ffebe9;
+        --closed: #8250df;
+        --closed-subtle: #fbefff;
+        --jira-todo: #44546f;
+        --jira-todo-subtle: #dcdfe4;
+        --jira-progress: #0c66e4;
+        --jira-progress-subtle: #cce0ff;
+        --jira-review: #8270db;
+        --jira-review-subtle: #eae6ff;
+        --jira-done: #22a06b;
+        --jira-done-subtle: #baf3db;
+        --shadow-card: 0 1px 2px rgba(31, 35, 40, 0.08);
+        --shadow-pop: 0 12px 28px rgba(31, 35, 40, 0.18);
+        color-scheme: light;
+      }
+      html[data-theme="dark"] {
+        --canvas: #0d1117;
+        --canvas-subtle: #161b22;
+        --canvas-inset: #010409;
+        --overlay: #1c2128;
+        --border: #30363d;
+        --border-muted: #21262d;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --fg-subtle: #6e7681;
+        --accent: #58a6ff;
+        --accent-subtle: #0c2d6b;
+        --success: #3fb950;
+        --success-subtle: #0f2e1a;
+        --attention: #d29922;
+        --attention-subtle: #3c2e05;
+        --danger: #f85149;
+        --danger-subtle: #3c1618;
+        --closed: #a371f7;
+        --closed-subtle: #271b3d;
+        --jira-todo: #9fadbc;
+        --jira-todo-subtle: #2c3646;
+        --jira-progress: #6cb0ff;
+        --jira-progress-subtle: #0d2f5c;
+        --jira-review: #b8acf6;
+        --jira-review-subtle: #2b234d;
+        --jira-done: #7ee2b8;
+        --jira-done-subtle: #103824;
+        --shadow-card: none;
+        --shadow-pop: 0 12px 28px rgba(1, 4, 9, 0.6);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { min-height: 100%; }
+      body {
+        margin: 0; background: var(--canvas-subtle); color: var(--fg);
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      button { appearance: none; -webkit-appearance: none; font: inherit; }
+      code, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; }
+
+      .btn {
+        background: var(--canvas); border: 1px solid var(--border); border-radius: 6px; color: var(--fg);
+        cursor: pointer; font-size: 13px; font-weight: 500; padding: 5px 12px;
+      }
+      .btn:hover { background: var(--canvas-inset); }
+      .btn.primary { background: var(--success); border-color: var(--success); color: #fff; }
+      .btn.primary:hover { background: #197539; }
+      .btn.danger { color: var(--danger); }
+      .btn.danger:hover { background: var(--danger-subtle); }
+      .btn.small { font-size: 12px; padding: 3px 9px; }
+      .btn:disabled { cursor: not-allowed; opacity: .55; }
+
+      header.topbar {
+        align-items: center; background: var(--canvas); border-bottom: 1px solid var(--border);
+        display: flex; gap: 16px; padding: 0 20px; position: sticky; top: 0; height: 56px; z-index: 20;
+      }
+      .topbar-brand { align-items: center; display: flex; flex: 1 1 0%; gap: 10px; min-width: 0; }
+      .topbar-mark {
+        background: var(--fg); border-radius: 6px; color: var(--canvas); display: grid; flex: none;
+        font-size: 12px; font-weight: 700; height: 28px; place-items: center; width: 28px;
+      }
+      .topbar-crumb {
+        color: var(--fg-muted); flex: 1; font-size: 14px; min-width: 0; overflow: hidden;
+        text-overflow: ellipsis; white-space: nowrap;
+      }
+      .topbar-crumb b { color: var(--fg); font-weight: 600; }
+      .sync-pill {
+        align-items: center; border: 1px solid var(--border); border-radius: 999px; display: flex; flex: none;
+        font-size: 12px; gap: 6px; padding: 4px 10px 4px 8px;
+      }
+      .sync-pill .dot { background: var(--success); border-radius: 50%; height: 7px; width: 7px; }
+      .sync-pill.paused .dot { background: var(--attention); }
+      .theme-toggle {
+        background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--fg-muted);
+        cursor: pointer; flex: none; font-size: 12px; padding: 5px 9px;
+      }
+      .theme-toggle:hover { color: var(--fg); }
+      .account-cluster { position: relative; }
+      .account-trigger {
+        align-items: center; background: transparent; border: 1px solid transparent; border-radius: 8px;
+        cursor: pointer; display: flex; gap: 4px; padding: 4px; margin: -4px;
+      }
+      .account-trigger:hover { border-color: var(--border); }
+      .avatar-stack { display: flex; }
+      .avatar-stack img { border: 2px solid var(--canvas); border-radius: 50%; height: 24px; width: 24px; }
+      .avatar-stack img + img { margin-left: -8px; }
+      .account-menu {
+        background: var(--overlay); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-pop);
+        display: none; padding: 8px; position: absolute; right: 0; top: 44px; width: 268px; z-index: 30;
+      }
+      .account-menu.open { display: block; }
+      .account-row { align-items: center; border-radius: 6px; display: flex; gap: 10px; padding: 8px; }
+      .account-row img { border-radius: 50%; height: 30px; width: 30px; }
+      .account-row-body { flex: 1; min-width: 0; }
+      .account-row-body strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .account-row-body span { color: var(--fg-muted); display: block; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .account-menu-divider { border-top: 1px solid var(--border-muted); margin: 6px 4px; }
+      .account-menu a, .account-menu button.menu-item {
+        background: none; border: 0; border-radius: 6px; color: var(--fg); cursor: pointer; display: block;
+        font-size: 13px; padding: 8px; text-align: left; width: 100%;
+      }
+      .account-menu a:hover, .account-menu button.menu-item:hover { background: var(--canvas-inset); text-decoration: none; }
+      .account-menu button.menu-item.danger { color: var(--danger); }
+
+      .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+      nav.rail { border-right: 1px solid var(--border); min-height: calc(100vh - 56px); padding: 18px 12px; }
+      nav.rail button.nav-link {
+        align-items: center; background: none; border: 0; border-radius: 6px; color: var(--fg-muted);
+        cursor: pointer; display: flex; font-size: 13.5px; font-weight: 500; gap: 10px; margin-bottom: 2px;
+        padding: 7px 10px; text-align: left; width: 100%;
+      }
+      nav.rail button.nav-link svg { flex: none; opacity: .8; }
+      nav.rail button.nav-link:hover { background: var(--canvas-inset); color: var(--fg); }
+      nav.rail button.nav-link.active { background: var(--accent-subtle); color: var(--accent); font-weight: 600; }
+      nav.rail button.nav-link.active svg { opacity: 1; }
+      .rail-divider { border-top: 1px solid var(--border-muted); margin: 14px 4px; }
+      .rail-meta { color: var(--fg-subtle); font-size: 11.5px; padding: 0 10px; }
+      .rail-meta div { margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .rail-meta div b { color: var(--fg-muted); font-weight: 600; }
+
+      main.view { display: none; padding: 28px 32px 60px; }
+      main.view.active { display: block; }
+      .page-head { align-items: flex-start; display: flex; gap: 16px; margin-bottom: 20px; }
+      .page-head h1 { font-size: 20px; letter-spacing: -.01em; margin: 0 0 3px; }
+      .page-head p { color: var(--fg-muted); font-size: 13.5px; margin: 0; }
+      .page-head-actions { display: flex; flex: none; gap: 8px; margin-left: auto; }
+
+      .stat-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); margin-bottom: 22px; }
+      .stat-card {
+        background: var(--canvas); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-card);
+        padding: 14px 16px;
+      }
+      .stat-card .label { color: var(--fg-muted); font-size: 12px; }
+      .stat-card .value { font-size: 24px; font-weight: 600; letter-spacing: -.02em; margin-top: 3px; }
+
+      .panel {
+        background: var(--canvas); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-card);
+        margin-bottom: 22px; overflow: hidden;
+      }
+      .panel-head {
+        align-items: center; background: var(--canvas-subtle); border-bottom: 1px solid var(--border);
+        display: flex; gap: 10px; padding: 11px 16px;
+      }
+      .panel-head h2 { font-size: 14px; margin: 0; }
+      .panel-head span.count { color: var(--fg-muted); font-size: 12.5px; }
+      .panel-empty { color: var(--fg-muted); font-size: 13px; padding: 26px; text-align: center; }
+
+      .pair-row { border-bottom: 1px solid var(--border-muted); display: grid; gap: 14px; grid-template-columns: 1fr 24px 1fr auto; padding: 12px 16px; }
+      .pair-row:last-child { border-bottom: 0; }
+      .pair-row:hover { background: var(--canvas-subtle); }
+      .pair-side { min-width: 0; }
+      .pair-meta { align-items: center; color: var(--fg-subtle); display: flex; font-size: 12px; gap: 6px; margin-bottom: 2px; }
+      .pair-title { font-size: 13.5px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .pair-title a { color: var(--fg); }
+      .pair-title a:hover { color: var(--accent); }
+      .pair-arrow { align-self: center; color: var(--fg-subtle); text-align: center; }
+      .pair-status { align-self: center; }
+
+      .state-dot { border-radius: 50%; display: inline-block; height: 8px; width: 8px; }
+      .state-dot.open { background: var(--success); }
+      .state-dot.closed { background: var(--closed); }
+      .chip {
+        border-radius: 999px; display: inline-flex; font-size: 11.5px; font-weight: 600; padding: 2px 9px;
+      }
+      .chip.todo { background: var(--jira-todo-subtle); color: var(--jira-todo); }
+      .chip.progress { background: var(--jira-progress-subtle); color: var(--jira-progress); }
+      .chip.review { background: var(--jira-review-subtle); color: var(--jira-review); }
+      .chip.done { background: var(--jira-done-subtle); color: var(--jira-done); }
+      .branch-tag { color: var(--fg-subtle); display: block; font-size: 11px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      .board-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .board-col { background: var(--canvas-subtle); border-radius: 8px; min-width: 0; padding: 10px; }
+      .board-col-head { align-items: center; display: flex; font-size: 12.5px; font-weight: 700; justify-content: space-between; letter-spacing: .02em; padding: 4px 6px 10px; text-transform: uppercase; }
+      .board-col-head .count { background: var(--border-muted); border-radius: 10px; color: var(--fg-muted); font-size: 11px; font-weight: 600; padding: 1px 7px; }
+      .board-col[data-phase="todo"] .board-col-head { color: var(--jira-todo); }
+      .board-col[data-phase="progress"] .board-col-head { color: var(--jira-progress); }
+      .board-col[data-phase="review"] .board-col-head { color: var(--jira-review); }
+      .board-col[data-phase="done"] .board-col-head { color: var(--jira-done); }
+      .board-card {
+        background: var(--canvas); border: 1px solid var(--border-muted); border-left: 3px solid var(--border);
+        border-radius: 6px; box-shadow: var(--shadow-card); margin-bottom: 8px; padding: 10px 12px;
+      }
+      .board-col[data-phase="progress"] .board-card { border-left-color: var(--jira-progress); }
+      .board-col[data-phase="review"] .board-card { border-left-color: var(--jira-review); }
+      .board-col[data-phase="done"] .board-card { border-left-color: var(--jira-done); }
+      .board-card .key { color: var(--jira-progress); font-size: 11px; font-weight: 700; }
+      .board-card .title { font-size: 13px; margin: 3px 0 6px; }
+      .board-card .foot { align-items: center; color: var(--fg-subtle); display: flex; font-size: 11px; gap: 6px; justify-content: space-between; }
+      .board-empty { color: var(--fg-subtle); font-size: 12px; padding: 10px 6px; }
+
+      table.activity { border-collapse: collapse; width: 100%; }
+      table.activity td { border-bottom: 1px solid var(--border-muted); font-size: 12.5px; padding: 8px 16px; vertical-align: top; }
+      table.activity tr:last-child td { border-bottom: 0; }
+      table.activity tr:hover td { background: var(--canvas-subtle); }
+      .activity-time { color: var(--fg-subtle); white-space: nowrap; }
+      .activity-dir { color: var(--fg-muted); white-space: nowrap; }
+      .activity-result { font-weight: 600; white-space: nowrap; }
+      .activity-result.applied { color: var(--success); }
+      .activity-result.created { color: var(--accent); }
+      .activity-result.echo-suppressed { color: var(--closed); }
+      .activity-result.error { color: var(--danger); }
+      .activity-result.no-op { color: var(--fg-subtle); }
+      .activity-entity { color: var(--fg); font-weight: 500; white-space: nowrap; }
+      .activity-summary { color: var(--fg-muted); }
+      .activity-summary small { color: var(--fg-subtle); display: block; }
+
+      .setup-section { border-bottom: 1px solid var(--border-muted); display: flex; gap: 32px; padding: 26px 4px; }
+      .setup-section:last-child { border-bottom: 0; }
+      .setup-copy { flex: 0 0 250px; }
+      .setup-copy h3 { font-size: 14px; margin: 0 0 6px; }
+      .setup-copy p { color: var(--fg-muted); font-size: 12.5px; margin: 0; }
+      .setup-body { flex: 1; min-width: 0; }
+      .provider-card {
+        align-items: center; background: var(--canvas); border: 1px solid var(--border); border-radius: 8px;
+        display: flex; gap: 12px; margin-bottom: 10px; padding: 12px 14px;
+      }
+      .provider-card img.avatar { border-radius: 50%; height: 32px; width: 32px; }
+      .provider-card .mark { align-items: center; border-radius: 50%; display: flex; flex: none; height: 32px; justify-content: center; width: 32px; }
+      .provider-card-body { flex: 1; min-width: 0; }
+      .provider-card-body strong { display: block; font-size: 13.5px; }
+      .provider-card-body span { color: var(--fg-muted); display: block; font-size: 12px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .field-row { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; margin-bottom: 14px; }
+      .field { display: flex; flex-direction: column; gap: 5px; }
+      .field.full { grid-column: 1 / -1; }
+      .field label { color: var(--fg-muted); font-size: 12.5px; font-weight: 500; }
+      .field input {
+        background: var(--canvas); border: 1px solid var(--border); border-radius: 6px; color: var(--fg);
+        font-size: 13.5px; padding: 7px 10px;
+      }
+      .field input:focus { border-color: var(--accent); outline: 2px solid var(--accent-subtle); }
+      .field small { color: var(--fg-subtle); font-size: 11.5px; }
+      .column-grid { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); }
+      .save-row { align-items: center; display: flex; gap: 12px; margin-top: 4px; }
+      .save-message { color: var(--success); font-size: 12.5px; }
+      .save-message.error { color: var(--danger); }
+
+      @media (max-width: 980px) {
+        .shell { grid-template-columns: minmax(0, 1fr); }
+        nav.rail { border-right: 0; border-bottom: 1px solid var(--border); display: flex; gap: 4px; min-height: 0; overflow-x: auto; padding: 10px 14px; }
+        .rail-divider, .rail-meta { display: none; }
+        nav.rail button.nav-link { flex: none; width: auto; }
+        .stat-grid { grid-template-columns: repeat(2, 1fr); }
+        .board-grid { grid-template-columns: repeat(2, 1fr); }
+        .pair-row { grid-template-columns: 1fr; }
+        .pair-arrow { display: none; }
+        .field-row, .column-grid { grid-template-columns: 1fr; }
+        .setup-section { flex-direction: column; gap: 12px; }
+        .setup-copy { flex: none; }
+      }
+      @media (max-width: 640px) {
+        header.topbar { gap: 10px; padding: 0 12px; }
+        #crumb-repo { display: none; }
+        .theme-toggle { padding: 5px 7px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-brand">
+        <div class="topbar-mark">E</div>
+        <div class="topbar-crumb"><b id="crumb-workspace">Ember</b> <span id="crumb-repo"></span></div>
+      </div>
+      <div class="sync-pill" id="sync-pill"><span class="dot"></span><span id="sync-pill-text">Live</span></div>
+      <button class="theme-toggle" id="theme-toggle" type="button">Dark</button>
+      <div class="account-cluster">
+        <button class="account-trigger" id="account-trigger" type="button">
+          <span class="avatar-stack" id="avatar-stack"></span>
+        </button>
+        <div class="account-menu" id="account-menu">
+          <div class="account-row" id="menu-github-row"></div>
+          <div class="account-row" id="menu-jira-row"></div>
+          <div class="account-menu-divider"></div>
+          <button class="menu-item" data-view-link="setup" type="button">Workspace settings</button>
+          <div class="account-menu-divider"></div>
+          <button class="menu-item danger" id="menu-signout" type="button">Sign out of both</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="shell">
+      <nav class="rail">
+        <button class="nav-link active" data-view="overview" type="button">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 0 1 2.75 2h10.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75ZM3.5 3.5v9h9v-9Z"/></svg>
+          Overview
+        </button>
+        <button class="nav-link" data-view="board" type="button">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.5A1.5 1.5 0 0 1 3.5 1h9A1.5 1.5 0 0 1 14 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5ZM5 3v10h1V3Zm2.5 0v6h1V3Zm3 0v8h1V3Z"/></svg>
+          Board
+        </button>
+        <button class="nav-link" data-view="setup" type="button">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4.75a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5ZM6.25 8a1.75 1.75 0 1 1 3.5 0 1.75 1.75 0 0 1-3.5 0Z"/><path d="M12.94 6.4a1.5 1.5 0 0 0 .27-1.4l-.4-1.16a1.5 1.5 0 0 0-1.1-.98l-1.2-.24a1.5 1.5 0 0 0-1.32.4l-.86.86a1.5 1.5 0 0 1-2.06 0l-.86-.86a1.5 1.5 0 0 0-1.32-.4l-1.2.24a1.5 1.5 0 0 0-1.1.98l-.4 1.16a1.5 1.5 0 0 0 .27 1.4l.75.95a1.5 1.5 0 0 1 0 1.86l-.75.95a1.5 1.5 0 0 0-.27 1.4l.4 1.16a1.5 1.5 0 0 0 1.1.98l1.2.24a1.5 1.5 0 0 0 1.32-.4l.86-.86a1.5 1.5 0 0 1 2.06 0l.86.86a1.5 1.5 0 0 0 1.32.4l1.2-.24a1.5 1.5 0 0 0 1.1-.98l.4-1.16a1.5 1.5 0 0 0-.27-1.4l-.75-.95a1.5 1.5 0 0 1 0-1.86Z"/></svg>
+          Setup
+        </button>
+        <div class="rail-divider"></div>
+        <div class="rail-meta">
+          <div><b>Repository</b><br /><span id="rail-repo"></span></div>
+          <div><b>Jira project</b><br /><span id="rail-project"></span></div>
+        </div>
+      </nav>
+
+      <main class="view active" id="view-overview">
+        <div class="page-head">
+          <div>
+            <h1 id="overview-title">Overview</h1>
+            <p>Live status of the GitHub ↔ Jira connection for this workspace.</p>
+          </div>
+          <div class="page-head-actions">
+            <button class="btn" id="pause-btn" type="button">Pause sync</button>
+          </div>
+        </div>
+
+        <div class="stat-grid" id="stat-grid"></div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Connected work</h2><span class="count" id="pair-count"></span></div>
+          <div id="pair-list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Recent activity</h2><span class="count" id="activity-count"></span></div>
+          <div style="max-height:360px;overflow:auto"><table class="activity"><tbody id="activity-body"></tbody></table></div>
+        </div>
+      </main>
+
+      <main class="view" id="view-board">
+        <div class="page-head">
+          <div><h1>Board</h1><p>Jira issues grouped by workflow phase.</p></div>
+        </div>
+        <div class="board-grid" id="board-grid"></div>
+      </main>
+
+      <main class="view" id="view-setup">
+        <div class="page-head"><div><h1>Setup</h1><p>Connected accounts and the sources this workspace synchronizes.</p></div></div>
+
+        <div class="setup-section">
+          <div class="setup-copy"><h3>Connected accounts</h3><p>Ember uses OAuth for both providers. Tokens are encrypted and stored only on the server.</p></div>
+          <div class="setup-body">
+            <div class="provider-card" id="setup-github-card"></div>
+            <div class="provider-card" id="setup-jira-card"></div>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <div class="setup-copy"><h3>Sources</h3><p>The repository and Jira project this workspace keeps in sync.</p></div>
+          <div class="setup-body">
+            <form id="settings-form">
+              <div class="field-row">
+                <div class="field full">
+                  <label for="workspace-name">Workspace name</label>
+                  <input id="workspace-name" required />
+                </div>
+                <div class="field">
+                  <label for="github-repo">GitHub repository</label>
+                  <input id="github-repo" list="repo-options" placeholder="owner/repository" required />
+                  <datalist id="repo-options"></datalist>
+                  <small>Available repositories load after connecting GitHub.</small>
+                </div>
+                <div class="field">
+                  <label for="jira-project-key">Jira project</label>
+                  <input id="jira-project-key" list="project-options" required />
+                  <datalist id="project-options"></datalist>
+                  <small>Available projects load after connecting Jira.</small>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="setup-section">
+          <div class="setup-copy"><h3>Board columns</h3><p>Labels shown on the board for each workflow phase.</p></div>
+          <div class="setup-body">
+            <div class="column-grid">
+              <div class="field"><label for="column-todo">Backlog</label><input id="column-todo" /></div>
+              <div class="field"><label for="column-progress">In progress</label><input id="column-progress" /></div>
+              <div class="field"><label for="column-review">In review</label><input id="column-review" /></div>
+              <div class="field"><label for="column-done">Done</label><input id="column-done" /></div>
+            </div>
+            <div class="save-row">
+              <button class="btn primary" id="save-settings" type="button">Save workspace</button>
+              <span class="save-message" id="save-message"></span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script type="module">
+      const el = (id) => document.getElementById(id);
+      const esc = (value) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      let state = null;
+
+      const THEME_KEY = "ember-theme";
+      function applyTheme(theme) {
+        document.documentElement.dataset.theme = theme;
+        el("theme-toggle").textContent = theme === "dark" ? "Light" : "Dark";
+      }
+      applyTheme(localStorage.getItem(THEME_KEY) ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+      el("theme-toggle").addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        localStorage.setItem(THEME_KEY, next);
+        applyTheme(next);
+      });
+
+      function showView(name) {
+        document.querySelectorAll("main.view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
+        document.querySelectorAll(".nav-link").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
+        if (name === "setup") loadSetupOptions();
+      }
+      document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
+      document.querySelectorAll("[data-view-link]").forEach((button) => button.addEventListener("click", () => { showView(button.dataset.viewLink); el("account-menu").classList.remove("open"); }));
+
+      el("account-trigger").addEventListener("click", () => el("account-menu").classList.toggle("open"));
+      document.addEventListener("click", (event) => {
+        if (!el("account-cluster").contains(event.target)) el("account-menu").classList.remove("open");
+      });
+
+      el("pause-btn").addEventListener("click", async () => {
+        await fetch("/api/pause", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paused: !state.stats.paused }) });
+        refresh();
+      });
+
+      el("menu-signout").addEventListener("click", async () => {
+        await fetch("/auth/sign-out", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "github" }) });
+        await fetch("/auth/sign-out", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: "atlassian" }) });
+        location.href = "/";
+      });
+
+      function statusClass(status) {
+        if (status === "Done") return "done";
+        if (status === "In Review") return "review";
+        if (status === "In Progress") return "progress";
+        return "todo";
+      }
+      function statusLabel(status) { return status ?? "To Do"; }
+
+      function paintTopbar(s) {
+        const settings = s.setup.settings;
+        const auth = s.setup.auth;
+        el("crumb-workspace").textContent = settings.workspaceName;
+        el("crumb-repo").textContent = `/ ${settings.githubRepo}`;
+        el("overview-title").textContent = settings.workspaceName;
+        el("rail-repo").textContent = settings.githubRepo;
+        el("rail-project").textContent = `${settings.jiraProjectKey} · ${settings.jiraBaseUrl.replace(/^https?:\/\//, "")}`;
+
+        const paused = s.stats.paused;
+        el("sync-pill").className = `sync-pill${paused ? " paused" : ""}`;
+        el("sync-pill-text").textContent = paused ? "Paused" : "Live";
+        el("pause-btn").textContent = paused ? "Resume sync" : "Pause sync";
+
+        const avatars = [];
+        if (auth.githubUser?.avatarUrl) avatars.push(`<img src="${auth.githubUser.avatarUrl}" alt="GitHub" title="GitHub · ${esc(auth.githubUser.login)}" />`);
+        const jiraAvatar = auth.jiraUser?.avatarUrls?.["48x48"];
+        if (jiraAvatar) avatars.push(`<img src="${jiraAvatar}" alt="Jira" title="Jira · ${esc(auth.jiraUser.displayName)}" />`);
+        el("avatar-stack").innerHTML = avatars.join("") || `<span style="width:24px;height:24px;border-radius:50%;background:var(--border);display:block"></span>`;
+
+        el("menu-github-row").innerHTML = auth.githubUser
+          ? `<img src="${auth.githubUser.avatarUrl}" alt="" /><div class="account-row-body"><strong>@${esc(auth.githubUser.login)}</strong><span>GitHub</span></div>`
+          : `<div class="account-row-body"><strong>Not connected</strong><span>GitHub</span></div>`;
+        el("menu-jira-row").innerHTML = auth.jiraUser
+          ? `<img src="${jiraAvatar ?? ""}" alt="" /><div class="account-row-body"><strong>${esc(auth.jiraUser.displayName)}</strong><span>Jira · ${esc(auth.jiraSite?.name ?? "")}</span></div>`
+          : `<div class="account-row-body"><strong>Not connected</strong><span>Jira</span></div>`;
+      }
+
+      function paintStats(s) {
+        const rows = [
+          ["Connected pairs", s.connections.length],
+          ["Changes applied", s.counts.applied ?? 0],
+          ["Echoes prevented", s.counts["echo-suppressed"] ?? 0],
+          ["No-change polls", s.stats.notModified],
+        ];
+        el("stat-grid").innerHTML = rows.map(([label, value]) => `<div class="stat-card"><div class="label">${label}</div><div class="value">${value}</div></div>`).join("");
+      }
+
+      function paintPairs(s) {
+        el("pair-count").textContent = `${s.connections.length} pairs`;
+        const githubByNumber = new Map(s.github.map((issue) => [issue.number, issue]));
+        const jiraByKey = new Map(s.jira.map((issue) => [issue.key, issue]));
+        if (s.connections.length === 0) {
+          el("pair-list").innerHTML = `<div class="panel-empty">No synchronized work yet. Create a Jira ticket or connect a GitHub issue from Board.</div>`;
+          return;
+        }
+        el("pair-list").innerHTML = s.connections.map((connection) => {
+          const gh = githubByNumber.get(connection.ghNumber);
+          const jira = jiraByKey.get(connection.jiraKey);
+          const phase = statusClass(connection.workflow);
+          return `<div class="pair-row">
+            <div class="pair-side">
+              <div class="pair-meta"><span class="state-dot ${gh?.state ?? "open"}"></span>GitHub #${connection.ghNumber} · ${esc(gh?.state ?? "")}</div>
+              <div class="pair-title">${gh ? `<a href="${esc(gh.url)}" target="_blank" rel="noreferrer">${esc(gh.title)}</a>` : "Issue unavailable"}</div>
+            </div>
+            <div class="pair-arrow">→</div>
+            <div class="pair-side">
+              <div class="pair-meta">${esc(connection.jiraKey)}</div>
+              <div class="pair-title">${esc(jira?.summary ?? "Ticket unavailable")}</div>
+              ${connection.branch ? `<span class="branch-tag">${esc(connection.branch)}</span>` : ""}
+            </div>
+            <div class="pair-status"><span class="chip ${phase}">${esc(statusLabel(connection.workflow))}</span></div>
+          </div>`;
+        }).join("");
+      }
+
+      function paintBoard(s) {
+        const columns = s.setup.settings.columns;
+        const phases = [["To Do", "todo", columns.todo], ["In Progress", "progress", columns.inProgress], ["In Review", "review", columns.inReview], ["Done", "done", columns.done]];
+        el("board-grid").innerHTML = phases.map(([status, phase, label]) => {
+          const tickets = s.jira.filter((issue) => issue.status === status);
+          const cards = tickets.length === 0
+            ? `<div class="board-empty">Nothing here</div>`
+            : tickets.map((ticket) => `<div class="board-card">
+                <div class="key">${esc(ticket.key)}</div>
+                <div class="title">${esc(ticket.summary)}</div>
+                <div class="foot"><span>${ticket.ghNumber ? `GitHub #${ticket.ghNumber}` : "No GitHub link"}</span>${ticket.branch ? `<span title="${esc(ticket.branch)}">branch</span>` : ""}</div>
+              </div>`).join("");
+          return `<div class="board-col" data-phase="${phase}"><div class="board-col-head"><span>${esc(label)}</span><span class="count">${tickets.length}</span></div>${cards}</div>`;
+        }).join("");
+      }
+
+      function paintActivity(s) {
+        const events = [...s.events].reverse().slice(0, 100);
+        el("activity-count").textContent = `${s.events.length} events`;
+        el("activity-body").innerHTML = events.length === 0
+          ? `<tr><td colspan="5" class="panel-empty">Activity appears as the connector observes changes.</td></tr>`
+          : events.map((event) => `<tr>
+              <td class="activity-time">${new Date(event.ts).toLocaleTimeString()}</td>
+              <td class="activity-dir">${esc(event.direction)}</td>
+              <td class="activity-result ${esc(event.disposition)}">${esc(event.disposition.replaceAll("-", " "))}</td>
+              <td class="activity-entity">${esc(event.entity)}</td>
+              <td class="activity-summary">${esc(event.summary)}${event.detail ? `<small>${esc(event.detail)}</small>` : ""}</td>
+            </tr>`).join("");
+      }
+
+      function paintSetup(s) {
+        const auth = s.setup.auth;
+        const settings = s.setup.settings;
+        el("setup-github-card").innerHTML = auth.githubUser
+          ? `<img class="avatar" src="${auth.githubUser.avatarUrl}" alt="" /><div class="provider-card-body"><strong>@${esc(auth.githubUser.login)}</strong><span>GitHub · connected</span></div><button class="btn small danger" data-signout="github">Disconnect</button>`
+          : `<div class="mark" style="background:#1f232815">GH</div><div class="provider-card-body"><strong>Not connected</strong><span>GitHub</span></div><button class="btn small" onclick="location.href='/auth/github/start'">Connect</button>`;
+        const jiraAvatar = auth.jiraUser?.avatarUrls?.["48x48"];
+        el("setup-jira-card").innerHTML = auth.jiraUser
+          ? `<img class="avatar" src="${jiraAvatar ?? ""}" alt="" /><div class="provider-card-body"><strong>${esc(auth.jiraUser.displayName)}</strong><span>${esc(auth.jiraSite?.name ?? "Jira")} · connected</span></div><button class="btn small danger" data-signout="atlassian">Disconnect</button>`
+          : `<div class="mark" style="background:#0c66e415">JR</div><div class="provider-card-body"><strong>Not connected</strong><span>Jira</span></div><button class="btn small" onclick="location.href='/auth/atlassian/start'">Connect</button>`;
+        document.querySelectorAll("[data-signout]").forEach((button) => button.addEventListener("click", async () => {
+          await fetch("/auth/sign-out", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: button.dataset.signout }) });
+          location.href = "/";
+        }));
+
+        el("workspace-name").value = settings.workspaceName;
+        el("github-repo").value = settings.githubRepo;
+        el("jira-project-key").value = settings.jiraProjectKey;
+        el("column-todo").value = settings.columns.todo;
+        el("column-progress").value = settings.columns.inProgress;
+        el("column-review").value = settings.columns.inReview;
+        el("column-done").value = settings.columns.done;
+      }
+
+      let optionsLoaded = false;
+      async function loadSetupOptions() {
+        if (optionsLoaded) return;
+        try {
+          const response = await fetch("/api/setup/options");
+          const options = await response.json();
+          el("repo-options").innerHTML = options.repositories.map((repo) => `<option value="${esc(repo.full_name)}"></option>`).join("");
+          el("project-options").innerHTML = options.projects.map((project) => `<option value="${esc(project.key)}">${esc(project.name)}</option>`).join("");
+          optionsLoaded = true;
+        } catch { /* keep current values usable if discovery is unavailable */ }
+      }
+
+      el("save-settings").addEventListener("click", async () => {
+        const payload = {
+          workspaceName: el("workspace-name").value.trim(),
+          githubRepo: el("github-repo").value.trim(),
+          jiraBaseUrl: state.setup.settings.jiraBaseUrl,
+          jiraProjectKey: el("jira-project-key").value.trim(),
+          columns: {
+            todo: el("column-todo").value.trim(),
+            inProgress: el("column-progress").value.trim(),
+            inReview: el("column-review").value.trim(),
+            done: el("column-done").value.trim(),
+          },
+        };
+        const response = await fetch("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const result = await response.json();
+        const message = el("save-message");
+        if (!response.ok) {
+          message.className = "save-message error";
+          message.textContent = result.error ?? "Could not save.";
+          return;
+        }
+        message.className = "save-message";
+        message.textContent = result.resetAssociations ? "Saved — sources changed, associations rebuilt." : "Saved.";
+        setTimeout(refresh, 400);
+      });
+
+      async function refresh() {
+        const response = await fetch("/api/state");
+        if (response.status === 401) { location.href = "/"; return; }
+        if (!response.ok) return;
+        state = await response.json();
+        paintTopbar(state);
+        paintStats(state);
+        paintPairs(state);
+        paintBoard(state);
+        paintActivity(state);
+        paintSetup(state);
+      }
+
+      new EventSource("/api/events").addEventListener("message", () => setTimeout(refresh, 150));
+      refresh();
+      setInterval(refresh, 6000);
+    </script>
+  </body>
+</html>

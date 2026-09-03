@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in · Ember</title>
+    <style>
+      :root {
+        --canvas: #ffffff;
+        --canvas-subtle: #f6f8fa;
+        --canvas-inset: #eef1f4;
+        --border: #d0d7de;
+        --border-muted: #e3e8ee;
+        --fg: #1f2328;
+        --fg-muted: #59636e;
+        --fg-subtle: #818b98;
+        --accent: #0969da;
+        --accent-fg: #ffffff;
+        --success: #1a7f37;
+        --success-subtle: #dafbe1;
+        --danger: #cf222e;
+        --jira-blue: #0c66e4;
+        --shadow-sm: 0 1px 0 rgba(31, 35, 40, 0.04);
+        --shadow-card: 0 8px 24px rgba(140, 149, 159, 0.2);
+        --radius: 6px;
+        color-scheme: light;
+      }
+      html[data-theme="dark"] {
+        --canvas: #0d1117;
+        --canvas-subtle: #161b22;
+        --canvas-inset: #010409;
+        --border: #30363d;
+        --border-muted: #21262d;
+        --fg: #e6edf3;
+        --fg-muted: #8b949e;
+        --fg-subtle: #6e7681;
+        --accent: #58a6ff;
+        --accent-fg: #0d1117;
+        --success: #3fb950;
+        --success-subtle: #0f2e1a;
+        --danger: #f85149;
+        --jira-blue: #6cb0ff;
+        --shadow-sm: none;
+        --shadow-card: 0 8px 24px rgba(1, 4, 9, 0.55);
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { min-height: 100%; }
+      body {
+        margin: 0;
+        background: var(--canvas-subtle);
+        color: var(--fg);
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      button { appearance: none; -webkit-appearance: none; font: inherit; }
+
+      .topline { align-items: center; display: flex; justify-content: space-between; padding: 20px 28px; }
+      .brand { align-items: center; display: flex; gap: 9px; }
+      .brand-mark {
+        background: var(--fg); border-radius: 6px; color: var(--canvas);
+        display: grid; font-size: 12px; font-weight: 700; height: 28px; place-items: center; width: 28px;
+      }
+      .brand-name { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+      .theme-toggle {
+        background: var(--canvas); border: 1px solid var(--border); border-radius: 6px; color: var(--fg-muted);
+        cursor: pointer; font-size: 12px; padding: 6px 10px;
+      }
+      .theme-toggle:hover { border-color: var(--fg-subtle); color: var(--fg); }
+
+      main { align-items: center; display: flex; justify-content: center; min-height: calc(100vh - 130px); padding: 24px; }
+      .card {
+        background: var(--canvas); border: 1px solid var(--border); border-radius: 12px;
+        box-shadow: var(--shadow-card); padding: 40px 40px 32px; width: min(440px, 100%);
+      }
+      .card-eyebrow { color: var(--fg-subtle); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+      .card h1 { font-size: 24px; letter-spacing: -.02em; line-height: 1.25; margin: 8px 0 6px; }
+      .card-sub { color: var(--fg-muted); font-size: 14px; margin: 0 0 28px; }
+
+      .steps { display: flex; flex-direction: column; gap: 10px; }
+      .step {
+        align-items: center; background: var(--canvas); border: 1px solid var(--border-muted); border-radius: 10px;
+        display: flex; gap: 14px; padding: 14px 16px; transition: border-color 120ms ease, background 120ms ease;
+      }
+      .step.done { background: var(--success-subtle); border-color: var(--success); }
+      .step-icon {
+        align-items: center; border-radius: 8px; display: flex; flex: none; height: 34px; justify-content: center; width: 34px;
+      }
+      .step-icon svg { height: 19px; width: 19px; }
+      .step-body { flex: 1; min-width: 0; }
+      .step-title { font-size: 14px; font-weight: 600; }
+      .step-detail { color: var(--fg-muted); font-size: 12.5px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .step-avatar { border-radius: 50%; height: 20px; margin-right: 5px; vertical-align: -4px; width: 20px; }
+      .step-action {
+        align-items: center; background: var(--fg); border: 1px solid var(--fg); border-radius: 6px;
+        color: var(--canvas); cursor: pointer; display: inline-flex; flex: none; font-size: 13px; font-weight: 600;
+        gap: 7px; padding: 7px 14px; white-space: nowrap;
+      }
+      .step-action:hover { opacity: .85; }
+      .step-action.connected { background: transparent; border-color: var(--success); color: var(--success); cursor: default; }
+      .step-action.connected:hover { opacity: 1; }
+      .step-check {
+        align-items: center; background: var(--success); border-radius: 50%; color: #fff; display: flex; flex: none;
+        height: 22px; justify-content: center; width: 22px;
+      }
+
+      .divider { border-top: 1px solid var(--border-muted); margin: 24px 0 20px; }
+      .continue-btn {
+        background: var(--fg-subtle); border: none; border-radius: 6px; color: var(--canvas); cursor: not-allowed;
+        font-size: 14px; font-weight: 600; padding: 10px 0; text-align: center; width: 100%;
+      }
+      .continue-btn.ready { background: var(--success); cursor: pointer; }
+      .continue-btn.ready:hover { background: #197539; }
+
+      .trust-row {
+        align-items: flex-start; color: var(--fg-subtle); display: flex; font-size: 12px; gap: 8px; margin-top: 18px;
+      }
+      .trust-row svg { flex: none; margin-top: 1px; }
+      .error-banner {
+        background: #fff1f0; border: 1px solid var(--danger); border-radius: 8px; color: var(--danger);
+        font-size: 13px; margin-bottom: 18px; padding: 10px 12px;
+      }
+      html[data-theme="dark"] .error-banner { background: #2d1214; }
+
+      footer { color: var(--fg-subtle); font-size: 12px; padding: 16px 28px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="topline">
+      <div class="brand"><div class="brand-mark">E</div><div class="brand-name">Ember</div></div>
+      <button class="theme-toggle" id="theme-toggle" type="button">Dark mode</button>
+    </div>
+
+    <main>
+      <div class="card">
+        <div class="card-eyebrow">Ember workspace</div>
+        <h1>Sign in to continue</h1>
+        <p class="card-sub">Connect the two accounts this workspace synchronizes. Nothing is stored in your browser.</p>
+
+        <div class="error-banner" id="error-banner" hidden></div>
+
+        <div class="steps">
+          <div class="step" id="github-step">
+            <div class="step-icon" id="github-icon" style="background:#1f232815"></div>
+            <div class="step-body">
+              <div class="step-title">GitHub</div>
+              <div class="step-detail" id="github-detail">Repositories, issues, and pull requests</div>
+            </div>
+            <button class="step-action" id="github-action" type="button"></button>
+          </div>
+
+          <div class="step" id="jira-step">
+            <div class="step-icon" id="jira-icon" style="background:#0c66e415"></div>
+            <div class="step-body">
+              <div class="step-title">Jira</div>
+              <div class="step-detail" id="jira-detail">Your site, project, and issue workflow</div>
+            </div>
+            <button class="step-action" id="jira-action" type="button"></button>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+        <button class="continue-btn" id="continue-btn" type="button" aria-disabled="true">Connect both accounts to continue</button>
+
+        <div class="trust-row">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 .5a3.5 3.5 0 0 1 3.5 3.5v2h.75a1.75 1.75 0 0 1 1.75 1.75v6A1.75 1.75 0 0 1 12.25 15.5h-8.5A1.75 1.75 0 0 1 2 13.75v-6A1.75 1.75 0 0 1 3.75 6h.75V4A3.5 3.5 0 0 1 8 .5Zm2 5.5V4a2 2 0 1 0-4 0v2Z"/></svg>
+          <span>Access tokens are encrypted at rest on the server and are never exposed to this page.</span>
+        </div>
+      </div>
+    </main>
+
+    <footer>Ember is a proof of concept. Sign-in uses standard OAuth 2.0 with GitHub and Atlassian.</footer>
+
+    <script type="module">
+      const el = (id) => document.getElementById(id);
+      const params = new URLSearchParams(location.search);
+
+      const THEME_KEY = "ember-theme";
+      function applyTheme(theme) {
+        document.documentElement.dataset.theme = theme;
+        el("theme-toggle").textContent = theme === "dark" ? "Light mode" : "Dark mode";
+      }
+      const savedTheme = localStorage.getItem(THEME_KEY) ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      applyTheme(savedTheme);
+      el("theme-toggle").addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        localStorage.setItem(THEME_KEY, next);
+        applyTheme(next);
+      });
+
+      const GITHUB_MARK = `<svg viewBox="0 0 16 16" width="18" height="18" fill="#1f2328"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>`;
+      const JIRA_MARK = `<svg viewBox="0 0 16 16" width="18" height="18"><path d="M15.06 0H7.53a4.44 4.44 0 0 0 4.44 4.44h1.81v1.75a4.44 4.44 0 0 0 4.44 4.44V.97A.97.97 0 0 0 17.25 0Z" fill="#2684FF" transform="translate(-2.03)"/><path d="M11.29 3.79H3.76a4.44 4.44 0 0 0 4.44 4.44h1.81v1.75a4.44 4.44 0 0 0 4.44 4.44V4.76a.97.97 0 0 0-.97-.97Z" fill="#2684FF" transform="translate(-2.03)"/><path d="M7.53 7.59H0a4.44 4.44 0 0 0 4.44 4.44h1.81v1.74a4.44 4.44 0 0 0 4.44 4.45V8.56a.97.97 0 0 0-.97-.97Z" fill="#2684FF" transform="translate(-2.03)"/></svg>`;
+      el("github-icon").innerHTML = GITHUB_MARK;
+      el("jira-icon").innerHTML = JIRA_MARK;
+
+      if (params.get("error")) {
+        el("error-banner").hidden = false;
+        el("error-banner").textContent = "That sign-in attempt could not be completed. Check the provider app's callback URL and try again.";
+      }
+
+      function paintProvider(prefix, connected, identity, href) {
+        const step = el(`${prefix}-step`);
+        const detail = el(`${prefix}-detail`);
+        const action = el(`${prefix}-action`);
+        step.classList.toggle("done", connected);
+        if (connected) {
+          detail.innerHTML = identity.avatar
+            ? `<img class="step-avatar" src="${identity.avatar}" alt="" /><span>${identity.label}</span>`
+            : `<span>${identity.label}</span>`;
+          action.className = "step-action connected";
+          action.innerHTML = `<span class="step-check">✓</span> Connected`;
+          action.onclick = null;
+        } else {
+          action.className = "step-action";
+          action.textContent = "Connect";
+          action.onclick = () => { location.href = href; };
+        }
+      }
+
+      async function refresh() {
+        const response = await fetch("/api/auth/status");
+        if (!response.ok) return;
+        const { auth } = await response.json();
+
+        paintProvider(
+          "github",
+          auth.githubConnected,
+          { label: auth.githubUser ? `Signed in as @${auth.githubUser.login}` : "Connected", avatar: auth.githubUser?.avatarUrl },
+          "/auth/github/start",
+        );
+        paintProvider(
+          "jira",
+          auth.jiraConnected,
+          {
+            label: auth.jiraUser ? `${auth.jiraUser.displayName}${auth.jiraSite ? ` · ${auth.jiraSite.name}` : ""}` : "Connected",
+            avatar: auth.jiraUser?.avatarUrls?.["48x48"],
+          },
+          "/auth/atlassian/start",
+        );
+
+        const ready = auth.githubConnected && auth.jiraConnected;
+        const button = el("continue-btn");
+        button.setAttribute("aria-disabled", ready ? "false" : "true");
+        button.className = ready ? "continue-btn ready" : "continue-btn";
+        button.textContent = ready ? "Continue to workspace" : "Connect both accounts to continue";
+        if (ready) button.onclick = () => { location.href = "/"; };
+        if (ready) setTimeout(() => { location.href = "/"; }, 900);
+      }
+
+      refresh();
+    </script>
+  </body>
+</html>

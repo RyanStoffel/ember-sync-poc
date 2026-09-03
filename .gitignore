@@ -1,0 +1,6 @@
+node_modules/
+data/
+data-local-backup/
+dist/
+.env
+*.log

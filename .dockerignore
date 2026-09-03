@@ -1,0 +1,8 @@
+node_modules
+dist
+data
+data-local-backup
+.git
+test
+*.md
+.env*
