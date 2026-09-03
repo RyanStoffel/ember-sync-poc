@@ -119,6 +119,10 @@ export class JiraClient {
     return this.request<JiraComment>("POST", `/rest/api/3/issue/${key}/comment`, { body });
   }
 
+  async deleteIssue(key: string): Promise<void> {
+    await this.request<void>("DELETE", `/rest/api/3/issue/${key}`);
+  }
+
   async listComments(key: string): Promise<JiraComment[]> {
     const result = await this.request<{ comments: JiraComment[] }>("GET", `/rest/api/3/issue/${key}/comment`);
     return result.comments;

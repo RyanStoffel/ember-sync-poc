@@ -752,23 +752,30 @@
       el("new-workspace-btn").addEventListener("click", openNewWorkspaceModal);
       el("new-workspace-cancel").addEventListener("click", () => el("new-workspace-modal").classList.remove("open"));
       el("new-workspace-create").addEventListener("click", async () => {
-        const payload = {
-          name: el("new-name").value.trim(),
-          githubRepo: el("new-repo").value.trim(),
-          jiraProjectKey: el("new-project").value.trim(),
-        };
-        const response = await fetch("/api/workspaces", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-        const result = await response.json();
-        if (!response.ok) {
-          el("new-workspace-message").textContent = result.error ?? "Could not create workspace.";
-          return;
+        const button = el("new-workspace-create");
+        if (button.disabled) return;
+        button.disabled = true;
+        try {
+          const payload = {
+            name: el("new-name").value.trim(),
+            githubRepo: el("new-repo").value.trim(),
+            jiraProjectKey: el("new-project").value.trim(),
+          };
+          const response = await fetch("/api/workspaces", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+          const result = await response.json();
+          if (!response.ok) {
+            el("new-workspace-message").textContent = result.error ?? "Could not create workspace.";
+            return;
+          }
+          el("new-workspace-modal").classList.remove("open");
+          currentId = result.id;
+          localStorage.setItem(CURRENT_KEY, currentId);
+          lastPaintedWorkspaceId = null;
+          showView("overview");
+          await loadWorkspaces();
+        } finally {
+          button.disabled = false;
         }
-        el("new-workspace-modal").classList.remove("open");
-        currentId = result.id;
-        localStorage.setItem(CURRENT_KEY, currentId);
-        lastPaintedWorkspaceId = null;
-        showView("overview");
-        await loadWorkspaces();
       });
 
       let optionsLoaded = false;

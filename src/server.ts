@@ -307,6 +307,9 @@ async function act(workspace: WorkspaceRecord, action: string, input: Record<str
     case "jira.comment":
       await jiraAsHuman.addComment(key, toAdf(String(input.body)));
       return;
+    case "jira.delete":
+      await jiraAsHuman.deleteIssue(key);
+      return;
     default:
       throw new Error(`Unknown action ${action}`);
   }
