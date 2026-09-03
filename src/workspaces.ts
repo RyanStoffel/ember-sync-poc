@@ -112,14 +112,36 @@ export class WorkspaceStore {
     }
   }
 
+  /**
+   * Two workspaces pointed at the same repository and the same Jira project
+   * would each run their own reconcile against their own link registry, so
+   * every issue looks "unlinked" to one of them and both sides get mirrored
+   * twice, forever, on every restart. This is what a duplicate submit of the
+   * "create workspace" form produces, so it is rejected outright rather than
+   * just discouraged in the UI.
+   */
+  private validateUnique(githubRepo: string, jiraProjectKey: string, excludeId?: string): void {
+    const collision = this.workspaces.find(
+      (workspace) =>
+        workspace.id !== excludeId &&
+        workspace.githubRepo.toLowerCase() === githubRepo.toLowerCase() &&
+        workspace.jiraProjectKey === jiraProjectKey,
+    );
+    if (collision) {
+      throw new Error(`"${collision.name}" already syncs ${githubRepo} with ${jiraProjectKey}`);
+    }
+  }
+
   create(input: { name: string; githubRepo: string; jiraProjectKey: string; columns?: Partial<BoardColumns> }): WorkspaceRecord {
     this.validateRepo(input.githubRepo);
     if (!input.jiraProjectKey.trim()) throw new Error("Jira project key is required");
+    const jiraProjectKey = input.jiraProjectKey.trim().toUpperCase();
+    this.validateUnique(input.githubRepo, jiraProjectKey);
     const record: WorkspaceRecord = {
       id: randomBytes(8).toString("hex"),
       name: input.name.trim() || input.githubRepo,
       githubRepo: input.githubRepo,
-      jiraProjectKey: input.jiraProjectKey.trim().toUpperCase(),
+      jiraProjectKey,
       columns: { ...defaultColumns, ...input.columns },
       createdAt: new Date().toISOString(),
     };
@@ -139,6 +161,7 @@ export class WorkspaceStore {
     if (patch.githubRepo !== undefined) this.validateRepo(patch.githubRepo);
     const nextGithubRepo = patch.githubRepo ?? record.githubRepo;
     const nextJiraProjectKey = patch.jiraProjectKey ? patch.jiraProjectKey.trim().toUpperCase() : record.jiraProjectKey;
+    this.validateUnique(nextGithubRepo, nextJiraProjectKey, id);
     const targetChanged = nextGithubRepo !== record.githubRepo || nextJiraProjectKey !== record.jiraProjectKey;
     record.name = patch.name?.trim() || record.name;
     record.githubRepo = nextGithubRepo;
