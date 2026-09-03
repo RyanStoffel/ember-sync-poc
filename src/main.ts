@@ -2,12 +2,13 @@ import { config } from "./config.js";
 import { hydrateSessionsFromDisk, startTokenMaintenance } from "./oauth.js";
 import { startJiraSim } from "./jira-sim/server.js";
 import { startDashboard } from "./server.js";
-import { engine } from "./sync/engine.js";
+import { workspaceManager } from "./sync/manager.js";
 
 /**
- * Boot order matters: the dashboard owns the Jira webhook endpoint and must be
- * listening before the stand-in starts delivering events, and both HTTP
- * surfaces must be up before the engine performs its first reconcile.
+ * Boot order matters: the dashboard owns the Jira webhook endpoint and must
+ * be listening before the stand-in starts delivering events, and both HTTP
+ * surfaces must be up before any workspace's engine performs its first
+ * reconcile. Every workspace configured on disk gets its own poll loop.
  */
 await hydrateSessionsFromDisk();
 startTokenMaintenance();
@@ -20,14 +21,14 @@ if (!config.jira.simulator && !config.jiraWebhookSecret) {
 }
 
 console.log(
-  `[ember] syncing github.com/${config.github.owner}/${config.github.repo} <-> ${config.jira.projectKey} on ${config.jira.baseUrl}${config.jira.simulator ? " (local Jira stand-in)" : " (Jira Cloud)"}`,
+  `[ember] ${workspaceManager.list().length} workspace(s) configured on ${config.jira.baseUrl}${config.jira.simulator ? " (local Jira stand-in)" : " (Jira Cloud)"}`,
 );
 
-await engine.start();
+await workspaceManager.startAll();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
-    engine.stop();
+    for (const workspace of workspaceManager.list()) workspaceManager.engineFor(workspace.id)?.stop();
     process.exit(0);
   });
 }

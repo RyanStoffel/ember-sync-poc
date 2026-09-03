@@ -85,18 +85,23 @@ export class JiraStore {
     return this.issues;
   }
 
+  allForProject(projectKey: string): readonly JiraIssue[] {
+    return this.issues.filter((issue) => issue.fields.project.key === projectKey);
+  }
+
   find(key: string): JiraIssue | undefined {
     return this.issues.find((issue) => issue.key === key);
   }
 
   create(input: {
+    projectKey: string;
     summary: string;
     description: AdfDoc | null;
     labels: string[];
     reporter: JiraUser;
   }): JiraIssue {
     const id = String(10000 + this.nextId);
-    const key = `${config.jira.projectKey}-${this.nextId}`;
+    const key = `${input.projectKey}-${this.nextId}`;
     this.nextId++;
     const now = new Date().toISOString();
     const issue: JiraIssue = {
@@ -108,7 +113,7 @@ export class JiraStore {
         status: STATUSES[0]!,
         labels: input.labels,
         issuetype: { name: "Task" },
-        project: { key: config.jira.projectKey },
+        project: { key: input.projectKey },
         reporter: input.reporter,
         created: now,
         updated: now,

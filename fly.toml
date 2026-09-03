@@ -10,7 +10,6 @@ primary_region = "sjc"
   OAUTH_BASE_URL = "https://ember-sync-poc.fly.dev"
   JIRA_USE_SIMULATOR = "false"
   JIRA_BASE_URL = "https://ember-capstone.atlassian.net"
-  JIRA_PROJECT_KEY = "ESP"
   EMBER_DATA_DIR = "/data"
   GITHUB_POLL_MS = "5000"
 

@@ -58,8 +58,8 @@ export class JiraClient {
     return this.request<JiraUserProfile>("GET", "/rest/api/3/myself");
   }
 
-  async search(): Promise<JiraIssue[]> {
-    const jql = `project = ${config.jira.projectKey} ORDER BY created ASC`;
+  async search(projectKey: string): Promise<JiraIssue[]> {
+    const jql = `project = ${projectKey} ORDER BY created ASC`;
     const fields = "summary,description,status,labels,issuetype,project,reporter,created,updated";
     const result = await this.request<{ issues: JiraIssue[] }>(
       "GET",
@@ -81,10 +81,13 @@ export class JiraClient {
     return result.values;
   }
 
-  async createIssue(input: { summary: string; description: AdfDoc; labels: string[] }): Promise<{ key: string }> {
+  async createIssue(
+    projectKey: string,
+    input: { summary: string; description: AdfDoc; labels: string[] },
+  ): Promise<{ key: string }> {
     return this.request<{ key: string }>("POST", "/rest/api/3/issue", {
       fields: {
-        project: { key: config.jira.projectKey },
+        project: { key: projectKey },
         issuetype: { name: "Task" },
         summary: input.summary,
         description: input.description,

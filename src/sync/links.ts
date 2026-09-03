@@ -1,5 +1,4 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { config } from "../config.js";
 import type { GhSnapshot, JiraSnapshot } from "./mapping.js";
 
 /**
@@ -37,10 +36,11 @@ export class LinkRegistry {
   readonly links: IssueLink[] = [];
   private readonly seenGhComments = new Set<number>();
   private readonly seenJiraComments = new Set<string>();
-  private readonly file = `${config.dataDir}links.json`;
+  private readonly file: string;
 
-  constructor() {
-    mkdirSync(config.dataDir, { recursive: true });
+  constructor(workspaceDataDir: string) {
+    mkdirSync(workspaceDataDir, { recursive: true });
+    this.file = `${workspaceDataDir}links.json`;
     try {
       const parsed = JSON.parse(readFileSync(this.file, "utf8")) as Persisted;
       this.links.push(...parsed.links);

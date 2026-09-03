@@ -22,7 +22,7 @@ export type SyncEvent = {
 
 const MAX_EVENTS = 400;
 
-class EventLog {
+export class EventLog {
   private seq = 0;
   readonly events: SyncEvent[] = [];
   private readonly subscribers = new Set<(event: SyncEvent) => void>();
@@ -55,4 +55,5 @@ class EventLog {
   }
 }
 
+/** Global log for account-level events (OAuth, boot) that predate any workspace. */
 export const eventLog = new EventLog();

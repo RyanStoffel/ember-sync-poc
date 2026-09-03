@@ -3,10 +3,16 @@ import { config } from "../config.js";
 /**
  * Minimal GitHub REST client for the issue surface the sync engine needs.
  *
- * Polled endpoints are sent with an `If-None-Match` ETag. GitHub does not
- * charge a 304 against the rate limit, so an idle demo costs nothing while
- * still polling every few seconds.
+ * One client instance is shared across every workspace, since it only wraps
+ * the OAuth bearer token (account-level). The repository is a parameter on
+ * each call, not baked into the client, so the same instance can poll many
+ * repositories concurrently. The ETag cache is keyed accordingly.
+ *
+ * GitHub does not charge a 304 against the rate limit, so an idle demo
+ * across many repos still costs nothing while polling continues.
  */
+
+export type GithubRepoRef = { owner: string; repo: string };
 
 export type GithubIssue = {
   number: number;
@@ -59,14 +65,21 @@ export type ListOptions = {
 
 const API = "https://api.github.com";
 
+function repositoryPath(ref: GithubRepoRef): string {
+  return `/repos/${ref.owner}/${ref.repo}`;
+}
+
 export class GithubClient {
   private readonly etags = new Map<string, string>();
-  private get repositoryPath(): string {
-    return `/repos/${config.github.owner}/${config.github.repo}`;
-  }
 
-  resetCache(): void {
-    this.etags.clear();
+  /** Clears cached ETags for one repository, used when a workspace's target repo changes. */
+  resetCache(ref?: GithubRepoRef): void {
+    if (!ref) {
+      this.etags.clear();
+      return;
+    }
+    const prefix = `${ref.owner}/${ref.repo}:`;
+    for (const key of this.etags.keys()) if (key.startsWith(prefix)) this.etags.delete(key);
   }
 
   private async request<T>(
@@ -81,10 +94,10 @@ export class GithubClient {
       "user-agent": "ember-sync-poc",
     };
     if (options.body !== undefined) headers["content-type"] = "application/json";
-    // Keyed by endpoint, not by full path: `since` moves forward on every poll,
-    // so a path-keyed cache would never produce a hit. GitHub compares the tag
-    // against the response the current query would return, so a 304 still means
-    // exactly "identical to what you already processed".
+    // Keyed by repo + endpoint, not by full path: `since` moves forward on every
+    // poll, so a path-keyed cache would never produce a hit. GitHub compares the
+    // tag against the response the current query would return, so a 304 still
+    // means exactly "identical to what you already processed".
     const etagKey = options.etagKey;
     const cached = etagKey === undefined ? undefined : this.etags.get(etagKey);
     if (cached) headers["if-none-match"] = cached;
@@ -107,10 +120,10 @@ export class GithubClient {
   }
 
   /** Issues ordered oldest update first. Pull requests share this endpoint and are filtered out. */
-  async listIssues(options: ListOptions = {}): Promise<GithubIssue[] | typeof NOT_MODIFIED> {
-    const path = `${this.repositoryPath}/issues?state=all&per_page=100&sort=updated&direction=asc${options.since ? `&since=${encodeURIComponent(options.since)}` : ""}`;
+  async listIssues(ref: GithubRepoRef, options: ListOptions = {}): Promise<GithubIssue[] | typeof NOT_MODIFIED> {
+    const path = `${repositoryPath(ref)}/issues?state=all&per_page=100&sort=updated&direction=asc${options.since ? `&since=${encodeURIComponent(options.since)}` : ""}`;
     const issues = await this.request<GithubIssue[] | typeof NOT_MODIFIED>("GET", path, {
-      ...(options.conditional ? { etagKey: "issues" } : {}),
+      ...(options.conditional ? { etagKey: `${ref.owner}/${ref.repo}:issues` } : {}),
     });
     if (issues === NOT_MODIFIED) return NOT_MODIFIED;
     return issues.filter((issue) => issue.pull_request === undefined);
@@ -122,6 +135,7 @@ export class GithubClient {
       "/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
     );
   }
+
   async currentUser(): Promise<{ login: string; name: string | null; email: string | null; avatar_url: string }> {
     return this.request<{ login: string; name: string | null; email: string | null; avatar_url: string }>(
       "GET",
@@ -129,25 +143,24 @@ export class GithubClient {
     );
   }
 
-
-  async listComments(options: ListOptions = {}): Promise<GithubComment[] | typeof NOT_MODIFIED> {
-    const path = `${this.repositoryPath}/issues/comments?per_page=100&sort=updated&direction=asc${options.since ? `&since=${encodeURIComponent(options.since)}` : ""}`;
+  async listComments(ref: GithubRepoRef, options: ListOptions = {}): Promise<GithubComment[] | typeof NOT_MODIFIED> {
+    const path = `${repositoryPath(ref)}/issues/comments?per_page=100&sort=updated&direction=asc${options.since ? `&since=${encodeURIComponent(options.since)}` : ""}`;
     return this.request<GithubComment[] | typeof NOT_MODIFIED>("GET", path, {
-      ...(options.conditional ? { etagKey: "comments" } : {}),
+      ...(options.conditional ? { etagKey: `${ref.owner}/${ref.repo}:comments` } : {}),
     });
   }
 
-  async defaultBranch(): Promise<string> {
-    const repository = await this.request<{ default_branch: string }>("GET", this.repositoryPath);
+  async defaultBranch(ref: GithubRepoRef): Promise<string> {
+    const repository = await this.request<{ default_branch: string }>("GET", repositoryPath(ref));
     return repository.default_branch;
   }
 
   /** Returns null for a missing branch, preserving other GitHub API errors. */
-  async branchHead(branch: string): Promise<string | null> {
-    const path = `${this.repositoryPath}/git/ref/heads/${branch.split("/").map(encodeURIComponent).join("/")}`;
+  async branchHead(ref: GithubRepoRef, branch: string): Promise<string | null> {
+    const path = `${repositoryPath(ref)}/git/ref/heads/${branch.split("/").map(encodeURIComponent).join("/")}`;
     try {
-      const ref = await this.request<{ object: { sha: string } }>("GET", path);
-      return ref.object.sha;
+      const result = await this.request<{ object: { sha: string } }>("GET", path);
+      return result.object.sha;
     } catch (error) {
       if ((error as Error).message.includes(" -> 404 ")) return null;
       throw error;
@@ -155,13 +168,13 @@ export class GithubClient {
   }
 
   /** Creates a branch from the repository default branch, or adopts an existing one. */
-  async ensureBranch(branch: string): Promise<GithubWorkflowBranch> {
-    const existing = await this.branchHead(branch);
+  async ensureBranch(ref: GithubRepoRef, branch: string): Promise<GithubWorkflowBranch> {
+    const existing = await this.branchHead(ref, branch);
     if (existing) return { created: false, sha: existing };
-    const base = await this.branchHead(await this.defaultBranch());
+    const base = await this.branchHead(ref, await this.defaultBranch(ref));
     if (!base) throw new Error("Default branch has no resolvable head");
     try {
-      await this.request<void>("POST", `${this.repositoryPath}/git/refs`, {
+      await this.request<void>("POST", `${repositoryPath(ref)}/git/refs`, {
         body: {
           ref: `refs/heads/${branch}`,
           sha: base,
@@ -171,34 +184,35 @@ export class GithubClient {
     } catch (error) {
       // A concurrent creator can win between the existence check and POST.
       if ((error as Error).message.includes(" -> 422 ")) {
-        const concurrent = await this.branchHead(branch);
+        const concurrent = await this.branchHead(ref, branch);
         if (concurrent) return { created: false, sha: concurrent };
       }
       throw error;
     }
   }
 
-  async pullRequestsForBranch(branch: string): Promise<GithubPullRequest[]> {
-    const head = encodeURIComponent(`${config.github.owner}:${branch}`);
+  async pullRequestsForBranch(ref: GithubRepoRef, branch: string): Promise<GithubPullRequest[]> {
+    const head = encodeURIComponent(`${ref.owner}:${branch}`);
     return this.request<GithubPullRequest[]>(
       "GET",
-      `${this.repositoryPath}/pulls?state=all&head=${head}&per_page=20&sort=updated&direction=desc`,
+      `${repositoryPath(ref)}/pulls?state=all&head=${head}&per_page=20&sort=updated&direction=desc`,
     );
   }
 
-  async createIssue(input: { title: string; body: string; labels?: string[] }): Promise<GithubIssue> {
-    return this.request<GithubIssue>("POST", `${this.repositoryPath}/issues`, { body: input });
+  async createIssue(ref: GithubRepoRef, input: { title: string; body: string; labels?: string[] }): Promise<GithubIssue> {
+    return this.request<GithubIssue>("POST", `${repositoryPath(ref)}/issues`, { body: input });
   }
 
   async updateIssue(
+    ref: GithubRepoRef,
     number: number,
     patch: { title?: string; body?: string; state?: "open" | "closed"; labels?: string[] },
   ): Promise<GithubIssue> {
-    return this.request<GithubIssue>("PATCH", `${this.repositoryPath}/issues/${number}`, { body: patch });
+    return this.request<GithubIssue>("PATCH", `${repositoryPath(ref)}/issues/${number}`, { body: patch });
   }
 
-  async createComment(number: number, body: string): Promise<GithubComment> {
-    return this.request<GithubComment>("POST", `${this.repositoryPath}/issues/${number}/comments`, { body: { body } });
+  async createComment(ref: GithubRepoRef, number: number, body: string): Promise<GithubComment> {
+    return this.request<GithubComment>("POST", `${repositoryPath(ref)}/issues/${number}/comments`, { body: { body } });
   }
 }
 

@@ -1,14 +1,8 @@
 import { resolve } from "node:path";
 
-
-const [owner = "", repo = ""] = (process.env.GITHUB_REPO ?? "RyanStoffel/ember-sync-poc").split("/");
-if (!owner || !repo) throw new Error("GITHUB_REPO must look like owner/repo");
-
 export const config = {
   github: {
     token: "",
-    owner,
-    repo,
     /** Label that encodes Jira's "In Progress" status. */
     inProgressLabel: "in-progress",
     /** Label that encodes Jira's "In Review" status. */
@@ -20,7 +14,6 @@ export const config = {
     /** Point this at https://<site>.atlassian.net to run against real Jira Cloud. */
     baseUrl: process.env.JIRA_BASE_URL ?? "http://127.0.0.1:4001",
     apiBaseUrl: process.env.JIRA_API_BASE_URL,
-    projectKey: process.env.JIRA_PROJECT_KEY ?? "EMB",
     /** Service account the sync engine authenticates as. */
     syncEmail: process.env.JIRA_SYNC_EMAIL ?? "sync@ember.dev",
     syncAccountId: process.env.JIRA_SYNC_ACCOUNT_ID ?? "ember-sync",

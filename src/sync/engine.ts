@@ -1,8 +1,14 @@
 import { type AdfDoc, fromAdf, toAdf } from "../adf.js";
 import { config } from "../config.js";
+import { EventLog } from "../events.js";
 import { authStatus } from "../oauth.js";
-import { eventLog } from "../events.js";
-import { type GithubComment, GithubClient, type GithubIssue, NOT_MODIFIED } from "../github/client.js";
+import {
+  type GithubComment,
+  GithubClient,
+  type GithubIssue,
+  type GithubRepoRef,
+  NOT_MODIFIED,
+} from "../github/client.js";
 import { jiraAsSync } from "../jira/client.js";
 import type { JiraComment, JiraIssue, JiraStatusName } from "../jira-sim/store.js";
 import { EchoGuard } from "./echo.js";
@@ -26,6 +32,7 @@ export function branchNameFor(jiraKey: string, summary: string): string {
   const slug = summary.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50);
   return `feature/${jiraKey}-${slug || "work"}`;
 }
+
 export type EngineStats = {
   paused: boolean;
   polls: number;
@@ -34,28 +41,50 @@ export type EngineStats = {
   pendingFingerprints: number;
 };
 
+export type WorkspaceTarget = {
+  githubOwner: string;
+  githubRepo: string;
+  jiraProjectKey: string;
+};
+
 /**
- * Bidirectional GitHub <-> Jira sync.
+ * Bidirectional GitHub <-> Jira sync for one workspace (one repository paired
+ * with one Jira project). A process runs one instance per workspace; all
+ * instances share the same GitHub and Jira OAuth connections but each owns
+ * its own poll loop, caches, link registry, and activity log, keyed under
+ * its own directory on disk.
  *
- * Jira is event driven: the stand-in delivers real Jira webhook payloads, and
- * `onJiraWebhook` reacts to the changelog. GitHub is poll driven, because
- * receiving GitHub webhooks would require a publicly reachable URL; the engine
- * diffs each polled issue against the last snapshot in the link registry to
- * recover the same field-level change events a webhook would have given it.
+ * Jira is event driven: the stand-in (or real Jira Cloud) delivers webhook
+ * payloads, and `onJiraWebhook` reacts to the changelog. GitHub is poll
+ * driven, because receiving GitHub webhooks would require a publicly
+ * reachable URL; the engine diffs each polled issue against the last
+ * snapshot in the link registry to recover the same field-level change
+ * events a webhook would have given it.
  */
 export class SyncEngine {
-  readonly links = new LinkRegistry();
+  readonly eventLog = new EventLog();
+  readonly links: LinkRegistry;
   readonly ghCache = new Map<number, GithubIssue>();
   readonly jiraCache = new Map<string, JiraIssue>();
   private readonly pendingJiraCreates = new Set<string>();
   private readonly gh = new GithubClient();
   private readonly echo = new EchoGuard();
+  private ref: GithubRepoRef;
+  private jiraProjectKey: string;
+  private readonly dataDir: string;
   private timer: NodeJS.Timeout | undefined;
   private busy = false;
   private paused = false;
   private polls = 0;
   private notModified = 0;
   private lastPollAt: string | null = null;
+
+  constructor(public readonly id: string, target: WorkspaceTarget, dataDir: string) {
+    this.ref = { owner: target.githubOwner, repo: target.githubRepo };
+    this.jiraProjectKey = target.jiraProjectKey;
+    this.dataDir = dataDir;
+    this.links = new LinkRegistry(dataDir);
+  }
 
   get stats(): EngineStats {
     return {
@@ -71,7 +100,7 @@ export class SyncEngine {
     if (this.timer) return;
     const auth = authStatus();
     if (!auth.githubConnected || !auth.jiraConnected) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "system",
         disposition: "no-op",
         entity: "engine",
@@ -82,7 +111,7 @@ export class SyncEngine {
     try {
       await this.reconcile("boot");
     } catch (error) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "system",
         disposition: "error",
         entity: "engine",
@@ -95,6 +124,18 @@ export class SyncEngine {
 
   stop(): void {
     clearInterval(this.timer);
+    this.timer = undefined;
+  }
+
+  /** Repoints this workspace at a different repo/project, resetting associations built against the old target. */
+  async retarget(target: WorkspaceTarget): Promise<void> {
+    this.gh.resetCache(this.ref);
+    this.ref = { owner: target.githubOwner, repo: target.githubRepo };
+    this.jiraProjectKey = target.jiraProjectKey;
+    this.links.reset();
+    this.ghCache.clear();
+    this.jiraCache.clear();
+    await this.reconcile("target updated");
   }
 
   /**
@@ -105,7 +146,7 @@ export class SyncEngine {
   async setPaused(paused: boolean): Promise<void> {
     if (paused === this.paused) return;
     this.paused = paused;
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "system",
       disposition: "no-op",
       entity: "engine",
@@ -119,20 +160,19 @@ export class SyncEngine {
     if (this.paused || this.busy) return;
     this.busy = true;
     try {
-
       // Overlap the window so an issue updated mid-request is not skipped.
       const since = new Date(Date.now() - config.githubPollMs * 3).toISOString();
       this.polls++;
       this.lastPollAt = new Date().toISOString();
 
-      const issues = await this.gh.listIssues({ since, conditional: true });
+      const issues = await this.gh.listIssues(this.ref, { since, conditional: true });
       if (issues === NOT_MODIFIED) {
         this.notModified++;
       } else {
         for (const issue of issues) await this.ingestGithubIssue(issue);
       }
 
-      const comments = await this.gh.listComments({ since, conditional: true });
+      const comments = await this.gh.listComments(this.ref, { since, conditional: true });
       if (comments === NOT_MODIFIED) {
         this.notModified++;
       } else {
@@ -140,7 +180,7 @@ export class SyncEngine {
       }
       await this.pollBranchWorkflows();
     } catch (error) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "gh->jira",
         disposition: "error",
         entity: "poll",
@@ -152,24 +192,14 @@ export class SyncEngine {
     }
   }
 
-  async reconfigure(resetAssociations: boolean): Promise<void> {
-    if (resetAssociations) {
-      this.links.reset();
-      this.ghCache.clear();
-      this.jiraCache.clear();
-      this.gh.resetCache();
-    }
-    await this.reconcile("settings updated");
-  }
-
   /** Polls each linked work branch and applies the requested Jira workflow transitions. */
   private async pollBranchWorkflows(): Promise<void> {
     for (const link of this.links.links) {
       if (!link.branchName) continue;
       try {
-        const head = await this.gh.branchHead(link.branchName);
+        const head = await this.gh.branchHead(this.ref, link.branchName);
         if (!head) {
-          eventLog.emit({
+          this.eventLog.emit({
             direction: "gh->jira",
             disposition: "error",
             entity: `${link.jiraKey} branch`,
@@ -190,7 +220,7 @@ export class SyncEngine {
           }
         }
 
-        const pullRequests = await this.gh.pullRequestsForBranch(link.branchName);
+        const pullRequests = await this.gh.pullRequestsForBranch(this.ref, link.branchName);
         const pullRequest = pullRequests[0];
         if (!pullRequest) continue;
         if (link.pullRequestNumber !== pullRequest.number) {
@@ -206,7 +236,7 @@ export class SyncEngine {
           await this.transitionWorkflow(link, "In Review", `PR #${pullRequest.number} opened`);
         }
       } catch (error) {
-        eventLog.emit({
+        this.eventLog.emit({
           direction: "gh->jira",
           disposition: "error",
           entity: `${link.jiraKey} workflow`,
@@ -226,7 +256,7 @@ export class SyncEngine {
     link.jira = jiraSnapshot(updatedJira);
     await this.reflectWorkflowOnGithub(link, target);
     this.links.save();
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "gh->jira",
       disposition: "applied",
       entity: `${link.jiraKey} workflow`,
@@ -242,7 +272,7 @@ export class SyncEngine {
     const labels = portableLabels(target.labels).join(" ");
     this.echo.mark(link.ghNumber, "status", status);
     this.echo.mark(link.ghNumber, "labels", labels);
-    const updated = await this.gh.updateIssue(link.ghNumber, {
+    const updated = await this.gh.updateIssue(this.ref, link.ghNumber, {
       state: target.state,
       labels: target.labels,
     });
@@ -255,12 +285,12 @@ export class SyncEngine {
    * sides. On conflict GitHub wins, because it is the side holding the code.
    */
   async reconcile(reason: string): Promise<void> {
-    const ghIssues = await this.gh.listIssues();
+    const ghIssues = await this.gh.listIssues(this.ref);
     if (ghIssues === NOT_MODIFIED) return;
     for (const issue of ghIssues) this.ghCache.set(issue.number, issue);
-    const jiraIssues = await jiraAsSync.search();
+    const jiraIssues = await jiraAsSync.search(this.jiraProjectKey);
     for (const issue of jiraIssues) this.jiraCache.set(issue.key, issue);
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "system",
       disposition: "no-op",
       entity: "reconcile",
@@ -279,7 +309,7 @@ export class SyncEngine {
     }
 
     // One search after the create pass, keyed for the drift loop below.
-    const refreshedJiraIssues = await jiraAsSync.search();
+    const refreshedJiraIssues = await jiraAsSync.search(this.jiraProjectKey);
     for (const issue of refreshedJiraIssues) this.jiraCache.set(issue.key, issue);
     const jiraByKey = new Map(refreshedJiraIssues.map((issue) => [issue.key, issue]));
     for (const link of this.links.links) {
@@ -292,7 +322,7 @@ export class SyncEngine {
       const jiraDrifted = JSON.stringify(jiraNow) !== JSON.stringify(link.jira);
 
       if (ghDrifted && jiraDrifted) {
-        eventLog.emit({
+        this.eventLog.emit({
           direction: "gh->jira",
           disposition: "applied",
           entity: `GH#${link.ghNumber} / ${link.jiraKey}`,
@@ -309,12 +339,12 @@ export class SyncEngine {
     }
 
     // Comments that already existed are adopted as history rather than replayed.
-    const allComments = await this.gh.listComments();
+    const allComments = await this.gh.listComments(this.ref);
     if (allComments !== NOT_MODIFIED) {
       let adopted = 0;
       for (const comment of allComments) if (this.links.claimGhComment(comment.id)) adopted++;
       if (adopted > 0) {
-        eventLog.emit({
+        this.eventLog.emit({
           direction: "system",
           disposition: "no-op",
           entity: "reconcile",
@@ -345,7 +375,7 @@ export class SyncEngine {
     if (!this.links.claimGhComment(comment.id)) return;
 
     if (isMirroredComment(comment.body)) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "gh->jira",
         disposition: "echo-suppressed",
         entity: `GH#${number} comment`,
@@ -357,7 +387,7 @@ export class SyncEngine {
 
     const body = `${JIRA_MIRROR_PREFIX} @${comment.user.login}\n\n${comment.body}`;
     await jiraAsSync.addComment(link.jiraKey, toAdf(body));
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "gh->jira",
       disposition: "applied",
       entity: `GH#${number} comment`,
@@ -368,7 +398,7 @@ export class SyncEngine {
 
   private async createJiraFromGithub(issue: GithubIssue): Promise<void> {
     const snapshot = ghSnapshot(issue);
-    const created = await jiraAsSync.createIssue({
+    const created = await jiraAsSync.createIssue(this.jiraProjectKey, {
       summary: snapshot.title,
       description: toAdf(snapshot.body),
       labels: toJiraLabels(snapshot.labels),
@@ -391,7 +421,7 @@ export class SyncEngine {
         labels: toJiraLabels(snapshot.labels),
       },
     });
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "gh->jira",
       disposition: "created",
       entity: `GH#${issue.number}`,
@@ -462,7 +492,7 @@ export class SyncEngine {
       if (fields.labels !== undefined) link.jira.labels = fields.labels;
       if (statusToApply) link.jira.status = statusToApply;
       this.links.save();
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "gh->jira",
         disposition: "applied",
         entity: `GH#${link.ghNumber} -> ${link.jiraKey}`,
@@ -470,7 +500,7 @@ export class SyncEngine {
         detail: fields.summary ?? now.title,
       });
     } catch (error) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "gh->jira",
         disposition: "error",
         entity: `GH#${link.ghNumber} -> ${link.jiraKey}`,
@@ -481,7 +511,7 @@ export class SyncEngine {
   }
 
   private suppressed(link: IssueLink, field: string): void {
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "gh->jira",
       disposition: "echo-suppressed",
       entity: `GH#${link.ghNumber} ${field}`,
@@ -492,7 +522,7 @@ export class SyncEngine {
 
   // ------------------------------------------------------------------ Jira in
 
-  /** Entry point for Jira webhook deliveries. */
+  /** Entry point for Jira webhook deliveries already routed to this workspace by project key. */
   async onJiraWebhook(payload: JiraWebhook): Promise<void> {
     const actor = payload.user?.accountId ?? "unknown";
     const key = payload.issue?.key;
@@ -510,7 +540,7 @@ export class SyncEngine {
         link.jira = jiraSnapshot(payload.issue);
         this.links.save();
       }
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "jira->gh",
         disposition: "echo-suppressed",
         entity: `${key} ${payload.webhookEvent}`,
@@ -521,7 +551,7 @@ export class SyncEngine {
     }
 
     if (this.paused) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "jira->gh",
         disposition: "no-op",
         entity: key,
@@ -545,7 +575,7 @@ export class SyncEngine {
       const summary = (payload.changelog?.items ?? []).map((item) => item.field).join(", ");
       await this.applyJiraToGithub(link, jiraSnapshot(payload.issue), summary || "update");
     } catch (error) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "jira->gh",
         disposition: "error",
         entity: key,
@@ -554,13 +584,14 @@ export class SyncEngine {
       });
     }
   }
+
   private async ensureBranchForLink(link: IssueLink): Promise<void> {
     if (!link.branchName) link.branchName = branchNameFor(link.jiraKey, link.jira.summary);
     try {
-      const result = await this.gh.ensureBranch(link.branchName);
+      const result = await this.gh.ensureBranch(this.ref, link.branchName);
       link.lastCommitSha = result.sha;
       this.links.save();
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "system",
         disposition: result.created ? "created" : "no-op",
         entity: `${link.jiraKey} branch`,
@@ -568,7 +599,7 @@ export class SyncEngine {
         detail: link.branchName,
       });
     } catch (error) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "gh->jira",
         disposition: "error",
         entity: `${link.jiraKey} branch`,
@@ -578,11 +609,10 @@ export class SyncEngine {
     }
   }
 
-
   private async createGithubFromJira(issue: JiraIssue): Promise<void> {
     const snapshot = jiraSnapshot(issue);
     const target = githubStateFor(snapshot.status, snapshot.labels);
-    const created = await this.gh.createIssue({
+    const created = await this.gh.createIssue(this.ref, {
       title: snapshot.summary,
       body: snapshot.description,
       labels: target.labels,
@@ -590,7 +620,7 @@ export class SyncEngine {
     // A new issue is created open; close it separately if Jira says it is Done.
     if (target.state === "closed") {
       this.echo.mark(created.number, "status", snapshot.status);
-      await this.gh.updateIssue(created.number, { state: "closed" });
+      await this.gh.updateIssue(this.ref, created.number, { state: "closed" });
     }
     const ghNow: GhSnapshot = { title: snapshot.summary, body: snapshot.description, state: target.state, labels: target.labels.sort() };
     this.ghCache.set(created.number, { ...created, state: target.state, labels: target.labels.map((name) => ({ name })) });
@@ -604,7 +634,7 @@ export class SyncEngine {
     };
     await this.ensureBranchForLink(link);
     this.links.add(link);
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "jira->gh",
       disposition: "created",
       entity: issue.key,
@@ -652,11 +682,11 @@ export class SyncEngine {
       return;
     }
 
-    const updated = await this.gh.updateIssue(link.ghNumber, patch);
+    const updated = await this.gh.updateIssue(this.ref, link.ghNumber, patch);
     this.ghCache.set(updated.number, updated);
     link.gh = ghSnapshot(updated);
     this.links.save();
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "jira->gh",
       disposition: "applied",
       entity: `${link.jiraKey} -> GH#${link.ghNumber}`,
@@ -671,7 +701,7 @@ export class SyncEngine {
     if (!this.links.claimJiraComment(comment.id)) return;
     const text = fromAdf(comment.body);
     if (isMirroredComment(text)) {
-      eventLog.emit({
+      this.eventLog.emit({
         direction: "jira->gh",
         disposition: "echo-suppressed",
         entity: `${key} comment`,
@@ -681,10 +711,10 @@ export class SyncEngine {
       return;
     }
     const body = `${GH_MIRROR_PREFIX} ${comment.author.displayName} (${key})\n\n${text}`;
-    const created = await this.gh.createComment(link.ghNumber, body);
+    const created = await this.gh.createComment(this.ref, link.ghNumber, body);
     // Claim the GitHub id up front so the next poll does not treat it as new.
     this.links.claimGhComment(created.id);
-    eventLog.emit({
+    this.eventLog.emit({
       direction: "jira->gh",
       disposition: "applied",
       entity: `${key} comment`,
@@ -702,5 +732,3 @@ export type JiraWebhook = {
   comment?: JiraComment;
   changelog?: { id: string; items: { field: string; fromString: string | null; toString: string | null }[] };
 };
-
-export const engine = new SyncEngine();

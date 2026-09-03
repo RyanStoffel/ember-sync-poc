@@ -102,7 +102,13 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
 
   if (method === "POST" && url.pathname === "/rest/api/3/issue") {
     const fields = body.fields ?? {};
+    const projectKey = String(fields.project?.key ?? "");
+    if (!projectKey) {
+      json(400, { errorMessages: ["fields.project.key is required"] });
+      return;
+    }
     const issue = jiraStore.create({
+      projectKey,
       summary: String(fields.summary ?? "Untitled"),
       description: (fields.description ?? null) as AdfDoc | null,
       labels: Array.isArray(fields.labels) ? fields.labels.map(String) : [],
@@ -120,14 +126,19 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   }
 
   if (url.pathname === "/rest/api/3/search/jql") {
-    // The PoC only ever filters by project, so the JQL string is accepted and not parsed.
+    // The JQL string always takes the shape "project = KEY ORDER BY ...";
+    // pulling the key out directly avoids writing a JQL parser for one clause.
+    const jql = url.searchParams.get("jql") ?? "";
+    const projectMatch = /project\s*=\s*(\S+)/.exec(jql);
+    const issues = projectMatch ? jiraStore.allForProject(projectMatch[1]!) : jiraStore.all();
     json(200, {
-      issues: jiraStore.all().map(serialize),
-      total: jiraStore.all().length,
+      issues: issues.map(serialize),
+      total: issues.length,
       isLast: true,
     });
     return;
   }
+
 
   if (issueMatch) {
     const key = issueMatch[1]!;

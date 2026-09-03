@@ -1,0 +1,71 @@
+import { type BoardColumns, type WorkspaceRecord, workspaceStore, WorkspaceStore } from "../workspaces.js";
+import { SyncEngine, type WorkspaceTarget } from "./engine.js";
+
+function targetFor(record: WorkspaceRecord): WorkspaceTarget {
+  const [owner = "", repo = ""] = record.githubRepo.split("/");
+  return { githubOwner: owner, githubRepo: repo, jiraProjectKey: record.jiraProjectKey };
+}
+
+/**
+ * Owns one SyncEngine per workspace. All workspaces share the same GitHub and
+ * Jira OAuth connections (account-level); what varies per workspace is the
+ * repository, the Jira project, and each workspace's own poll loop, caches,
+ * and activity log.
+ */
+export class WorkspaceManager {
+  private readonly engines = new Map<string, SyncEngine>();
+
+  constructor(private readonly store: WorkspaceStore) {
+    for (const record of store.list()) {
+      this.engines.set(record.id, new SyncEngine(record.id, targetFor(record), store.dataDirFor(record.id)));
+    }
+  }
+
+  list(): readonly WorkspaceRecord[] {
+    return this.store.list();
+  }
+
+  get(id: string): WorkspaceRecord | undefined {
+    return this.store.get(id);
+  }
+
+  engineFor(id: string): SyncEngine | undefined {
+    return this.engines.get(id);
+  }
+
+  async startAll(): Promise<void> {
+    for (const engine of this.engines.values()) await engine.start();
+  }
+
+  async create(input: { name: string; githubRepo: string; jiraProjectKey: string; columns?: Partial<BoardColumns> }): Promise<WorkspaceRecord> {
+    const record = this.store.create(input);
+    const engine = new SyncEngine(record.id, targetFor(record), this.store.dataDirFor(record.id));
+    this.engines.set(record.id, engine);
+    await engine.start();
+    return record;
+  }
+
+  async update(
+    id: string,
+    patch: { name?: string; githubRepo?: string; jiraProjectKey?: string; columns?: Partial<BoardColumns> },
+  ): Promise<WorkspaceRecord> {
+    const { record, targetChanged } = this.store.update(id, patch);
+    const engine = this.engines.get(id);
+    if (engine && targetChanged) await engine.retarget(targetFor(record));
+    return record;
+  }
+
+  remove(id: string): void {
+    this.engines.get(id)?.stop();
+    this.engines.delete(id);
+    this.store.remove(id);
+  }
+
+  /** Finds the workspace to route a Jira webhook to, by the project key on its payload. */
+  findByJiraProjectKey(projectKey: string): SyncEngine | undefined {
+    const record = this.store.list().find((workspace) => workspace.jiraProjectKey === projectKey);
+    return record ? this.engines.get(record.id) : undefined;
+  }
+}
+
+export const workspaceManager = new WorkspaceManager(workspaceStore);

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ember workspace</title>
+    <title>Ember workspaces</title>
     <style>
       :root {
         --canvas: #ffffff;
@@ -138,15 +138,35 @@
       .account-row-body strong { display: block; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .account-row-body span { color: var(--fg-muted); display: block; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .account-menu-divider { border-top: 1px solid var(--border-muted); margin: 6px 4px; }
-      .account-menu a, .account-menu button.menu-item {
+      .account-menu button.menu-item {
         background: none; border: 0; border-radius: 6px; color: var(--fg); cursor: pointer; display: block;
         font-size: 13px; padding: 8px; text-align: left; width: 100%;
       }
-      .account-menu a:hover, .account-menu button.menu-item:hover { background: var(--canvas-inset); text-decoration: none; }
+      .account-menu button.menu-item:hover { background: var(--canvas-inset); }
       .account-menu button.menu-item.danger { color: var(--danger); }
 
-      .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); }
-      nav.rail { border-right: 1px solid var(--border); min-height: calc(100vh - 56px); padding: 18px 12px; }
+      .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); }
+      nav.rail { border-right: 1px solid var(--border); min-height: calc(100vh - 56px); padding: 16px 12px; }
+      .rail-label { color: var(--fg-subtle); font-size: 11px; font-weight: 700; letter-spacing: .08em; padding: 4px 10px; text-transform: uppercase; }
+      .workspace-list { margin-bottom: 6px; }
+      .workspace-row {
+        align-items: center; background: none; border: 0; border-radius: 6px; color: var(--fg); cursor: pointer;
+        display: flex; gap: 8px; margin-bottom: 1px; padding: 7px 10px; text-align: left; width: 100%;
+      }
+      .workspace-row:hover { background: var(--canvas-inset); }
+      .workspace-row.active { background: var(--accent-subtle); }
+      .workspace-row .dot { background: var(--fg-subtle); border-radius: 50%; flex: none; height: 6px; width: 6px; }
+      .workspace-row.active .dot { background: var(--success); }
+      .workspace-row .info { flex: 1; min-width: 0; }
+      .workspace-row .name { display: block; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .workspace-row.active .name { color: var(--accent); font-weight: 600; }
+      .workspace-row .repo { color: var(--fg-subtle); display: block; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .new-workspace-btn {
+        align-items: center; background: none; border: 1px dashed var(--border); border-radius: 6px; color: var(--fg-muted);
+        cursor: pointer; display: flex; font-size: 12.5px; gap: 6px; margin-top: 4px; padding: 7px 10px; width: 100%;
+      }
+      .new-workspace-btn:hover { border-color: var(--fg-subtle); color: var(--fg); }
+      .rail-divider { border-top: 1px solid var(--border-muted); margin: 14px 4px; }
       nav.rail button.nav-link {
         align-items: center; background: none; border: 0; border-radius: 6px; color: var(--fg-muted);
         cursor: pointer; display: flex; font-size: 13.5px; font-weight: 500; gap: 10px; margin-bottom: 2px;
@@ -156,10 +176,7 @@
       nav.rail button.nav-link:hover { background: var(--canvas-inset); color: var(--fg); }
       nav.rail button.nav-link.active { background: var(--accent-subtle); color: var(--accent); font-weight: 600; }
       nav.rail button.nav-link.active svg { opacity: 1; }
-      .rail-divider { border-top: 1px solid var(--border-muted); margin: 14px 4px; }
-      .rail-meta { color: var(--fg-subtle); font-size: 11.5px; padding: 0 10px; }
-      .rail-meta div { margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .rail-meta div b { color: var(--fg-muted); font-weight: 600; }
+      nav.rail button.nav-link:disabled { cursor: not-allowed; opacity: .45; }
 
       main.view { display: none; padding: 28px 32px 60px; }
       main.view.active { display: block; }
@@ -167,6 +184,9 @@
       .page-head h1 { font-size: 20px; letter-spacing: -.01em; margin: 0 0 3px; }
       .page-head p { color: var(--fg-muted); font-size: 13.5px; margin: 0; }
       .page-head-actions { display: flex; flex: none; gap: 8px; margin-left: auto; }
+      .empty-state { align-items: center; display: flex; flex-direction: column; gap: 14px; padding: 90px 20px; text-align: center; }
+      .empty-state h2 { font-size: 18px; margin: 0; }
+      .empty-state p { color: var(--fg-muted); font-size: 13.5px; margin: 0; max-width: 380px; }
 
       .stat-grid { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); margin-bottom: 22px; }
       .stat-card {
@@ -202,9 +222,7 @@
       .state-dot { border-radius: 50%; display: inline-block; height: 8px; width: 8px; }
       .state-dot.open { background: var(--success); }
       .state-dot.closed { background: var(--closed); }
-      .chip {
-        border-radius: 999px; display: inline-flex; font-size: 11.5px; font-weight: 600; padding: 2px 9px;
-      }
+      .chip { border-radius: 999px; display: inline-flex; font-size: 11.5px; font-weight: 600; padding: 2px 9px; }
       .chip.todo { background: var(--jira-todo-subtle); color: var(--jira-todo); }
       .chip.progress { background: var(--jira-progress-subtle); color: var(--jira-progress); }
       .chip.review { background: var(--jira-review-subtle); color: var(--jira-review); }
@@ -266,10 +284,7 @@
       .field { display: flex; flex-direction: column; gap: 5px; }
       .field.full { grid-column: 1 / -1; }
       .field label { color: var(--fg-muted); font-size: 12.5px; font-weight: 500; }
-      .field input {
-        background: var(--canvas); border: 1px solid var(--border); border-radius: 6px; color: var(--fg);
-        font-size: 13.5px; padding: 7px 10px;
-      }
+      .field input { background: var(--canvas); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); font-size: 13.5px; padding: 7px 10px; }
       .field input:focus { border-color: var(--accent); outline: 2px solid var(--accent-subtle); }
       .field small { color: var(--fg-subtle); font-size: 11.5px; }
       .column-grid { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); }
@@ -277,11 +292,23 @@
       .save-message { color: var(--success); font-size: 12.5px; }
       .save-message.error { color: var(--danger); }
 
+      .modal-backdrop {
+        align-items: center; background: rgba(15, 18, 22, 0.55); display: none; inset: 0; justify-content: center;
+        padding: 20px; position: fixed; z-index: 50;
+      }
+      .modal-backdrop.open { display: flex; }
+      .modal {
+        background: var(--overlay); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-pop);
+        max-width: 440px; padding: 22px; width: 100%;
+      }
+      .modal h2 { font-size: 16px; margin: 0 0 5px; }
+      .modal p.sub { color: var(--fg-muted); font-size: 12.5px; margin: 0 0 18px; }
+      .modal .field { margin-bottom: 13px; }
+      .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
       @media (max-width: 980px) {
         .shell { grid-template-columns: minmax(0, 1fr); }
-        nav.rail { border-right: 0; border-bottom: 1px solid var(--border); display: flex; gap: 4px; min-height: 0; overflow-x: auto; padding: 10px 14px; }
-        .rail-divider, .rail-meta { display: none; }
-        nav.rail button.nav-link { flex: none; width: auto; }
+        nav.rail { border-right: 0; border-bottom: 1px solid var(--border); min-height: 0; }
         .stat-grid { grid-template-columns: repeat(2, 1fr); }
         .board-grid { grid-template-columns: repeat(2, 1fr); }
         .pair-row { grid-template-columns: 1fr; }
@@ -313,8 +340,6 @@
           <div class="account-row" id="menu-github-row"></div>
           <div class="account-row" id="menu-jira-row"></div>
           <div class="account-menu-divider"></div>
-          <button class="menu-item" data-view-link="setup" type="button">Workspace settings</button>
-          <div class="account-menu-divider"></div>
           <button class="menu-item danger" id="menu-signout" type="button">Sign out of both</button>
         </div>
       </div>
@@ -322,6 +347,10 @@
 
     <div class="shell">
       <nav class="rail">
+        <div class="rail-label">Workspaces</div>
+        <div class="workspace-list" id="workspace-list"></div>
+        <button class="new-workspace-btn" id="new-workspace-btn" type="button">+ New workspace</button>
+        <div class="rail-divider"></div>
         <button class="nav-link active" data-view="overview" type="button">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.75A.75.75 0 0 1 2.75 2h10.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75ZM3.5 3.5v9h9v-9Z"/></svg>
           Overview
@@ -334,31 +363,23 @@
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4.75a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5ZM6.25 8a1.75 1.75 0 1 1 3.5 0 1.75 1.75 0 0 1-3.5 0Z"/><path d="M12.94 6.4a1.5 1.5 0 0 0 .27-1.4l-.4-1.16a1.5 1.5 0 0 0-1.1-.98l-1.2-.24a1.5 1.5 0 0 0-1.32.4l-.86.86a1.5 1.5 0 0 1-2.06 0l-.86-.86a1.5 1.5 0 0 0-1.32-.4l-1.2.24a1.5 1.5 0 0 0-1.1.98l-.4 1.16a1.5 1.5 0 0 0 .27 1.4l.75.95a1.5 1.5 0 0 1 0 1.86l-.75.95a1.5 1.5 0 0 0-.27 1.4l.4 1.16a1.5 1.5 0 0 0 1.1.98l1.2.24a1.5 1.5 0 0 0 1.32-.4l.86-.86a1.5 1.5 0 0 1 2.06 0l.86.86a1.5 1.5 0 0 0 1.32.4l1.2-.24a1.5 1.5 0 0 0 1.1-.98l.4-1.16a1.5 1.5 0 0 0-.27-1.4l-.75-.95a1.5 1.5 0 0 1 0-1.86Z"/></svg>
           Setup
         </button>
-        <div class="rail-divider"></div>
-        <div class="rail-meta">
-          <div><b>Repository</b><br /><span id="rail-repo"></span></div>
-          <div><b>Jira project</b><br /><span id="rail-project"></span></div>
-        </div>
       </nav>
 
       <main class="view active" id="view-overview">
         <div class="page-head">
           <div>
             <h1 id="overview-title">Overview</h1>
-            <p>Live status of the GitHub ↔ Jira connection for this workspace.</p>
+            <p>Live status of the GitHub &lt;-&gt; Jira connection for this workspace.</p>
           </div>
           <div class="page-head-actions">
             <button class="btn" id="pause-btn" type="button">Pause sync</button>
           </div>
         </div>
-
         <div class="stat-grid" id="stat-grid"></div>
-
         <div class="panel">
           <div class="panel-head"><h2>Connected work</h2><span class="count" id="pair-count"></span></div>
           <div id="pair-list"></div>
         </div>
-
         <div class="panel">
           <div class="panel-head"><h2>Recent activity</h2><span class="count" id="activity-count"></span></div>
           <div style="max-height:360px;overflow:auto"><table class="activity"><tbody id="activity-body"></tbody></table></div>
@@ -366,9 +387,7 @@
       </main>
 
       <main class="view" id="view-board">
-        <div class="page-head">
-          <div><h1>Board</h1><p>Jira issues grouped by workflow phase.</p></div>
-        </div>
+        <div class="page-head"><div><h1>Board</h1><p>Jira issues grouped by workflow phase.</p></div></div>
         <div class="board-grid" id="board-grid"></div>
       </main>
 
@@ -376,7 +395,7 @@
         <div class="page-head"><div><h1>Setup</h1><p>Connected accounts and the sources this workspace synchronizes.</p></div></div>
 
         <div class="setup-section">
-          <div class="setup-copy"><h3>Connected accounts</h3><p>Ember uses OAuth for both providers. Tokens are encrypted and stored only on the server.</p></div>
+          <div class="setup-copy"><h3>Connected accounts</h3><p>Shared by every workspace. Ember uses OAuth for both providers; tokens are encrypted and stored only on the server.</p></div>
           <div class="setup-body">
             <div class="provider-card" id="setup-github-card"></div>
             <div class="provider-card" id="setup-jira-card"></div>
@@ -384,28 +403,21 @@
         </div>
 
         <div class="setup-section">
-          <div class="setup-copy"><h3>Sources</h3><p>The repository and Jira project this workspace keeps in sync.</p></div>
+          <div class="setup-copy"><h3>This workspace</h3><p>The repository and Jira project this workspace keeps in sync.</p></div>
           <div class="setup-body">
-            <form id="settings-form">
-              <div class="field-row">
-                <div class="field full">
-                  <label for="workspace-name">Workspace name</label>
-                  <input id="workspace-name" required />
-                </div>
-                <div class="field">
-                  <label for="github-repo">GitHub repository</label>
-                  <input id="github-repo" list="repo-options" placeholder="owner/repository" required />
-                  <datalist id="repo-options"></datalist>
-                  <small>Available repositories load after connecting GitHub.</small>
-                </div>
-                <div class="field">
-                  <label for="jira-project-key">Jira project</label>
-                  <input id="jira-project-key" list="project-options" required />
-                  <datalist id="project-options"></datalist>
-                  <small>Available projects load after connecting Jira.</small>
-                </div>
+            <div class="field-row">
+              <div class="field full"><label for="workspace-name">Workspace name</label><input id="workspace-name" /></div>
+              <div class="field">
+                <label for="github-repo">GitHub repository</label>
+                <input id="github-repo" list="repo-options" placeholder="owner/repository" />
+                <datalist id="repo-options"></datalist>
               </div>
-            </form>
+              <div class="field">
+                <label for="jira-project-key">Jira project</label>
+                <input id="jira-project-key" list="project-options" />
+                <datalist id="project-options"></datalist>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -419,7 +431,8 @@
               <div class="field"><label for="column-done">Done</label><input id="column-done" /></div>
             </div>
             <div class="save-row">
-              <button class="btn primary" id="save-settings" type="button">Save workspace</button>
+              <button class="btn primary" id="save-workspace" type="button">Save workspace</button>
+              <button class="btn danger" id="delete-workspace" type="button">Delete workspace</button>
               <span class="save-message" id="save-message"></span>
             </div>
           </div>
@@ -427,10 +440,30 @@
       </main>
     </div>
 
+    <div class="modal-backdrop" id="new-workspace-modal">
+      <div class="modal">
+        <h2>New workspace</h2>
+        <p class="sub">Pick a GitHub repository and a Jira project to keep in sync. Uses the accounts already connected.</p>
+        <div class="field"><label for="new-name">Name</label><input id="new-name" placeholder="e.g. Marketing site" /></div>
+        <div class="field"><label for="new-repo">GitHub repository</label><input id="new-repo" list="repo-options" placeholder="owner/repository" /></div>
+        <div class="field"><label for="new-project">Jira project key</label><input id="new-project" list="project-options" placeholder="e.g. ESP" /></div>
+        <div class="modal-actions">
+          <button class="btn" id="new-workspace-cancel" type="button">Cancel</button>
+          <button class="btn primary" id="new-workspace-create" type="button">Create workspace</button>
+        </div>
+        <div class="save-message error" id="new-workspace-message"></div>
+      </div>
+    </div>
+
     <script type="module">
       const el = (id) => document.getElementById(id);
       const esc = (value) => String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-      let state = null;
+      const CURRENT_KEY = "ember-current-workspace";
+      let workspaces = [];
+      let currentId = localStorage.getItem(CURRENT_KEY);
+      let currentState = null;
+      let eventSource = null;
+      let currentView = "overview";
 
       const THEME_KEY = "ember-theme";
       function applyTheme(theme) {
@@ -445,21 +478,16 @@
       });
 
       function showView(name) {
+        currentView = name;
         document.querySelectorAll("main.view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
         document.querySelectorAll(".nav-link").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
         if (name === "setup") loadSetupOptions();
       }
       document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
-      document.querySelectorAll("[data-view-link]").forEach((button) => button.addEventListener("click", () => { showView(button.dataset.viewLink); el("account-menu").classList.remove("open"); }));
 
       el("account-trigger").addEventListener("click", () => el("account-menu").classList.toggle("open"));
       document.addEventListener("click", (event) => {
         if (!el("account-cluster").contains(event.target)) el("account-menu").classList.remove("open");
-      });
-
-      el("pause-btn").addEventListener("click", async () => {
-        await fetch("/api/pause", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paused: !state.stats.paused }) });
-        refresh();
       });
 
       el("menu-signout").addEventListener("click", async () => {
@@ -468,99 +496,150 @@
         location.href = "/";
       });
 
+      el("pause-btn").addEventListener("click", async () => {
+        if (!currentState) return;
+        await fetch("/api/pause", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ workspace: currentId, paused: !currentState.stats.paused }),
+        });
+        refreshCurrent();
+      });
+
+      // --- Workspace switcher -------------------------------------------------
+
+      function paintWorkspaceList() {
+        el("workspace-list").innerHTML = workspaces.map((workspace) => `
+          <button class="workspace-row ${workspace.id === currentId ? "active" : ""}" data-select="${workspace.id}">
+            <span class="dot"></span>
+            <span class="info"><span class="name">${esc(workspace.name)}</span><span class="repo">${esc(workspace.githubRepo)}</span></span>
+          </button>`).join("");
+        document.querySelectorAll("[data-select]").forEach((button) => button.addEventListener("click", () => selectWorkspace(button.dataset.select)));
+      }
+
+      function selectWorkspace(id) {
+        if (id === currentId) return;
+        currentId = id;
+        localStorage.setItem(CURRENT_KEY, id);
+        paintWorkspaceList();
+        connectEvents();
+        refreshCurrent();
+      }
+
+      async function loadWorkspaces() {
+        const response = await fetch("/api/workspaces");
+        if (response.status === 401) { location.href = "/"; return; }
+        const data = await response.json();
+        workspaces = data.workspaces;
+        paintAccounts(data.auth);
+        if (!currentId || !workspaces.some((workspace) => workspace.id === currentId)) {
+          currentId = workspaces[0]?.id ?? null;
+          if (currentId) localStorage.setItem(CURRENT_KEY, currentId);
+        }
+        paintWorkspaceList();
+        if (currentId) {
+          connectEvents();
+          await refreshCurrent();
+        } else {
+          paintEmptyWorkspace();
+        }
+      }
+
+      function paintEmptyWorkspace() {
+        el("crumb-workspace").textContent = "Ember";
+        el("crumb-repo").textContent = "";
+        el("overview-title").textContent = "Overview";
+        document.querySelectorAll(".nav-link").forEach((button) => { if (button.dataset.view !== "setup") button.disabled = true; });
+        el("pair-list").innerHTML = "";
+        el("board-grid").innerHTML = "";
+        el("view-overview").innerHTML = `<div class="empty-state">
+          <h2>No workspace yet</h2>
+          <p>Create one to pair a GitHub repository with a Jira project. You can add as many workspaces as you like — each one syncs independently.</p>
+          <button class="btn primary" id="empty-new-workspace">+ New workspace</button>
+        </div>`;
+        el("empty-new-workspace")?.addEventListener("click", openNewWorkspaceModal);
+      }
+
+      // --- Account identity (topbar + setup, refreshed independently of forms) --
+
+      function paintAccounts(auth) {
+        el("avatar-stack").innerHTML = [
+          auth.githubUser?.avatarUrl ? `<img src="${auth.githubUser.avatarUrl}" alt="GitHub" title="GitHub · ${esc(auth.githubUser.login)}" />` : "",
+          auth.jiraUser?.avatarUrls?.["48x48"] ? `<img src="${auth.jiraUser.avatarUrls["48x48"]}" alt="Jira" title="Jira · ${esc(auth.jiraUser.displayName)}" />` : "",
+        ].join("") || `<span style="width:24px;height:24px;border-radius:50%;background:var(--border);display:block"></span>`;
+
+        el("menu-github-row").innerHTML = auth.githubUser
+          ? `<img src="${auth.githubUser.avatarUrl}" alt="" /><div class="account-row-body"><strong>@${esc(auth.githubUser.login)}</strong><span>GitHub</span></div>`
+          : `<div class="account-row-body"><strong>Not connected</strong><span>GitHub</span></div>`;
+        const jiraAvatar = auth.jiraUser?.avatarUrls?.["48x48"];
+        el("menu-jira-row").innerHTML = auth.jiraUser
+          ? `<img src="${jiraAvatar ?? ""}" alt="" /><div class="account-row-body"><strong>${esc(auth.jiraUser.displayName)}</strong><span>Jira · ${esc(auth.jiraSite?.name ?? "")}</span></div>`
+          : `<div class="account-row-body"><strong>Not connected</strong><span>Jira</span></div>`;
+
+        el("setup-github-card").innerHTML = auth.githubUser
+          ? `<img class="avatar" src="${auth.githubUser.avatarUrl}" alt="" /><div class="provider-card-body"><strong>@${esc(auth.githubUser.login)}</strong><span>GitHub · connected</span></div><button class="btn small danger" data-signout="github">Disconnect</button>`
+          : `<div class="mark" style="background:#1f232815">GH</div><div class="provider-card-body"><strong>Not connected</strong><span>GitHub</span></div><button class="btn small" onclick="location.href='/auth/github/start'">Connect</button>`;
+        el("setup-jira-card").innerHTML = auth.jiraUser
+          ? `<img class="avatar" src="${jiraAvatar ?? ""}" alt="" /><div class="provider-card-body"><strong>${esc(auth.jiraUser.displayName)}</strong><span>${esc(auth.jiraSite?.name ?? "Jira")} · connected</span></div><button class="btn small danger" data-signout="atlassian">Disconnect</button>`
+          : `<div class="mark" style="background:#0c66e415">JR</div><div class="provider-card-body"><strong>Not connected</strong><span>Jira</span></div><button class="btn small" onclick="location.href='/auth/atlassian/start'">Connect</button>`;
+        document.querySelectorAll("[data-signout]").forEach((button) => button.addEventListener("click", async () => {
+          await fetch("/auth/sign-out", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: button.dataset.signout }) });
+          location.href = "/";
+        }));
+      }
+
+      // --- Current workspace view ---------------------------------------------
+
       function statusClass(status) {
         if (status === "Done") return "done";
         if (status === "In Review") return "review";
         if (status === "In Progress") return "progress";
         return "todo";
       }
-      function statusLabel(status) { return status ?? "To Do"; }
 
-      function paintTopbar(s) {
-        const settings = s.setup.settings;
-        const auth = s.setup.auth;
-        el("crumb-workspace").textContent = settings.workspaceName;
-        el("crumb-repo").textContent = `/ ${settings.githubRepo}`;
-        el("overview-title").textContent = settings.workspaceName;
-        el("rail-repo").textContent = settings.githubRepo;
-        el("rail-project").textContent = `${settings.jiraProjectKey} · ${settings.jiraBaseUrl.replace(/^https?:\/\//, "")}`;
+      function paintOverview(state) {
+        const workspace = state.workspace;
+        el("crumb-workspace").textContent = workspace.name;
+        el("crumb-repo").textContent = `/ ${workspace.githubRepo}`;
+        el("overview-title").textContent = workspace.name;
+        document.querySelectorAll(".nav-link").forEach((button) => { button.disabled = false; });
 
-        const paused = s.stats.paused;
+        const paused = state.stats.paused;
         el("sync-pill").className = `sync-pill${paused ? " paused" : ""}`;
         el("sync-pill-text").textContent = paused ? "Paused" : "Live";
         el("pause-btn").textContent = paused ? "Resume sync" : "Pause sync";
 
-        const avatars = [];
-        if (auth.githubUser?.avatarUrl) avatars.push(`<img src="${auth.githubUser.avatarUrl}" alt="GitHub" title="GitHub · ${esc(auth.githubUser.login)}" />`);
-        const jiraAvatar = auth.jiraUser?.avatarUrls?.["48x48"];
-        if (jiraAvatar) avatars.push(`<img src="${jiraAvatar}" alt="Jira" title="Jira · ${esc(auth.jiraUser.displayName)}" />`);
-        el("avatar-stack").innerHTML = avatars.join("") || `<span style="width:24px;height:24px;border-radius:50%;background:var(--border);display:block"></span>`;
+        el("stat-grid").innerHTML = [
+          ["Connected pairs", state.connections.length],
+          ["Changes applied", state.counts?.applied ?? 0],
+          ["Echoes prevented", state.counts?.["echo-suppressed"] ?? 0],
+          ["No-change polls", state.stats.notModified],
+        ].map(([label, value]) => `<div class="stat-card"><div class="label">${label}</div><div class="value">${value}</div></div>`).join("");
 
-        el("menu-github-row").innerHTML = auth.githubUser
-          ? `<img src="${auth.githubUser.avatarUrl}" alt="" /><div class="account-row-body"><strong>@${esc(auth.githubUser.login)}</strong><span>GitHub</span></div>`
-          : `<div class="account-row-body"><strong>Not connected</strong><span>GitHub</span></div>`;
-        el("menu-jira-row").innerHTML = auth.jiraUser
-          ? `<img src="${jiraAvatar ?? ""}" alt="" /><div class="account-row-body"><strong>${esc(auth.jiraUser.displayName)}</strong><span>Jira · ${esc(auth.jiraSite?.name ?? "")}</span></div>`
-          : `<div class="account-row-body"><strong>Not connected</strong><span>Jira</span></div>`;
-      }
+        el("pair-count").textContent = `${state.connections.length} pairs`;
+        const githubByNumber = new Map(state.github.map((issue) => [issue.number, issue]));
+        const jiraByKey = new Map(state.jira.map((issue) => [issue.key, issue]));
+        el("pair-list").innerHTML = state.connections.length === 0
+          ? `<div class="panel-empty">No synchronized work yet. Create a Jira ticket or a GitHub issue to see it appear here.</div>`
+          : state.connections.map((connection) => {
+              const gh = githubByNumber.get(connection.ghNumber);
+              const jira = jiraByKey.get(connection.jiraKey);
+              return `<div class="pair-row">
+                <div class="pair-side">
+                  <div class="pair-meta"><span class="state-dot ${gh?.state ?? "open"}"></span>GitHub #${connection.ghNumber} · ${esc(gh?.state ?? "")}</div>
+                  <div class="pair-title">${gh ? `<a href="${esc(gh.url)}" target="_blank" rel="noreferrer">${esc(gh.title)}</a>` : "Issue unavailable"}</div>
+                </div>
+                <div class="pair-arrow">-&gt;</div>
+                <div class="pair-side">
+                  <div class="pair-meta">${esc(connection.jiraKey)}</div>
+                  <div class="pair-title">${esc(jira?.summary ?? "Ticket unavailable")}</div>
+                  ${connection.branch ? `<span class="branch-tag">${esc(connection.branch)}</span>` : ""}
+                </div>
+                <div class="pair-status"><span class="chip ${statusClass(connection.workflow)}">${esc(connection.workflow ?? "To Do")}</span></div>
+              </div>`;
+            }).join("");
 
-      function paintStats(s) {
-        const rows = [
-          ["Connected pairs", s.connections.length],
-          ["Changes applied", s.counts.applied ?? 0],
-          ["Echoes prevented", s.counts["echo-suppressed"] ?? 0],
-          ["No-change polls", s.stats.notModified],
-        ];
-        el("stat-grid").innerHTML = rows.map(([label, value]) => `<div class="stat-card"><div class="label">${label}</div><div class="value">${value}</div></div>`).join("");
-      }
-
-      function paintPairs(s) {
-        el("pair-count").textContent = `${s.connections.length} pairs`;
-        const githubByNumber = new Map(s.github.map((issue) => [issue.number, issue]));
-        const jiraByKey = new Map(s.jira.map((issue) => [issue.key, issue]));
-        if (s.connections.length === 0) {
-          el("pair-list").innerHTML = `<div class="panel-empty">No synchronized work yet. Create a Jira ticket or connect a GitHub issue from Board.</div>`;
-          return;
-        }
-        el("pair-list").innerHTML = s.connections.map((connection) => {
-          const gh = githubByNumber.get(connection.ghNumber);
-          const jira = jiraByKey.get(connection.jiraKey);
-          const phase = statusClass(connection.workflow);
-          return `<div class="pair-row">
-            <div class="pair-side">
-              <div class="pair-meta"><span class="state-dot ${gh?.state ?? "open"}"></span>GitHub #${connection.ghNumber} · ${esc(gh?.state ?? "")}</div>
-              <div class="pair-title">${gh ? `<a href="${esc(gh.url)}" target="_blank" rel="noreferrer">${esc(gh.title)}</a>` : "Issue unavailable"}</div>
-            </div>
-            <div class="pair-arrow">→</div>
-            <div class="pair-side">
-              <div class="pair-meta">${esc(connection.jiraKey)}</div>
-              <div class="pair-title">${esc(jira?.summary ?? "Ticket unavailable")}</div>
-              ${connection.branch ? `<span class="branch-tag">${esc(connection.branch)}</span>` : ""}
-            </div>
-            <div class="pair-status"><span class="chip ${phase}">${esc(statusLabel(connection.workflow))}</span></div>
-          </div>`;
-        }).join("");
-      }
-
-      function paintBoard(s) {
-        const columns = s.setup.settings.columns;
-        const phases = [["To Do", "todo", columns.todo], ["In Progress", "progress", columns.inProgress], ["In Review", "review", columns.inReview], ["Done", "done", columns.done]];
-        el("board-grid").innerHTML = phases.map(([status, phase, label]) => {
-          const tickets = s.jira.filter((issue) => issue.status === status);
-          const cards = tickets.length === 0
-            ? `<div class="board-empty">Nothing here</div>`
-            : tickets.map((ticket) => `<div class="board-card">
-                <div class="key">${esc(ticket.key)}</div>
-                <div class="title">${esc(ticket.summary)}</div>
-                <div class="foot"><span>${ticket.ghNumber ? `GitHub #${ticket.ghNumber}` : "No GitHub link"}</span>${ticket.branch ? `<span title="${esc(ticket.branch)}">branch</span>` : ""}</div>
-              </div>`).join("");
-          return `<div class="board-col" data-phase="${phase}"><div class="board-col-head"><span>${esc(label)}</span><span class="count">${tickets.length}</span></div>${cards}</div>`;
-        }).join("");
-      }
-
-      function paintActivity(s) {
-        const events = [...s.events].reverse().slice(0, 100);
-        el("activity-count").textContent = `${s.events.length} events`;
+        const events = [...state.events].reverse().slice(0, 100);
+        el("activity-count").textContent = `${state.events.length} events`;
         el("activity-body").innerHTML = events.length === 0
           ? `<tr><td colspan="5" class="panel-empty">Activity appears as the connector observes changes.</td></tr>`
           : events.map((event) => `<tr>
@@ -572,29 +651,125 @@
             </tr>`).join("");
       }
 
-      function paintSetup(s) {
-        const auth = s.setup.auth;
-        const settings = s.setup.settings;
-        el("setup-github-card").innerHTML = auth.githubUser
-          ? `<img class="avatar" src="${auth.githubUser.avatarUrl}" alt="" /><div class="provider-card-body"><strong>@${esc(auth.githubUser.login)}</strong><span>GitHub · connected</span></div><button class="btn small danger" data-signout="github">Disconnect</button>`
-          : `<div class="mark" style="background:#1f232815">GH</div><div class="provider-card-body"><strong>Not connected</strong><span>GitHub</span></div><button class="btn small" onclick="location.href='/auth/github/start'">Connect</button>`;
-        const jiraAvatar = auth.jiraUser?.avatarUrls?.["48x48"];
-        el("setup-jira-card").innerHTML = auth.jiraUser
-          ? `<img class="avatar" src="${jiraAvatar ?? ""}" alt="" /><div class="provider-card-body"><strong>${esc(auth.jiraUser.displayName)}</strong><span>${esc(auth.jiraSite?.name ?? "Jira")} · connected</span></div><button class="btn small danger" data-signout="atlassian">Disconnect</button>`
-          : `<div class="mark" style="background:#0c66e415">JR</div><div class="provider-card-body"><strong>Not connected</strong><span>Jira</span></div><button class="btn small" onclick="location.href='/auth/atlassian/start'">Connect</button>`;
-        document.querySelectorAll("[data-signout]").forEach((button) => button.addEventListener("click", async () => {
-          await fetch("/auth/sign-out", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: button.dataset.signout }) });
-          location.href = "/";
-        }));
-
-        el("workspace-name").value = settings.workspaceName;
-        el("github-repo").value = settings.githubRepo;
-        el("jira-project-key").value = settings.jiraProjectKey;
-        el("column-todo").value = settings.columns.todo;
-        el("column-progress").value = settings.columns.inProgress;
-        el("column-review").value = settings.columns.inReview;
-        el("column-done").value = settings.columns.done;
+      function paintBoard(state) {
+        const columns = state.workspace.columns;
+        const phases = [["To Do", "todo", columns.todo], ["In Progress", "progress", columns.inProgress], ["In Review", "review", columns.inReview], ["Done", "done", columns.done]];
+        el("board-grid").innerHTML = phases.map(([status, phase, label]) => {
+          const tickets = state.jira.filter((issue) => issue.status === status);
+          const cards = tickets.length === 0
+            ? `<div class="board-empty">Nothing here</div>`
+            : tickets.map((ticket) => `<div class="board-card">
+                <div class="key">${esc(ticket.key)}</div>
+                <div class="title">${esc(ticket.summary)}</div>
+                <div class="foot"><span>${ticket.ghNumber ? `GitHub #${ticket.ghNumber}` : "No GitHub link"}</span>${ticket.branch ? `<span title="${esc(ticket.branch)}">branch</span>` : ""}</div>
+              </div>`).join("");
+          return `<div class="board-col" data-phase="${phase}"><div class="board-col-head"><span>${esc(label)}</span><span class="count">${tickets.length}</span></div>${cards}</div>`;
+        }).join("");
       }
+
+      /** Setup form fields are populated once per workspace switch, never on a live poll — typing must never fight a refresh. */
+      function paintSetupFields(workspace) {
+        el("workspace-name").value = workspace.name;
+        el("github-repo").value = workspace.githubRepo;
+        el("jira-project-key").value = workspace.jiraProjectKey;
+        el("column-todo").value = workspace.columns.todo;
+        el("column-progress").value = workspace.columns.inProgress;
+        el("column-review").value = workspace.columns.inReview;
+        el("column-done").value = workspace.columns.done;
+      }
+
+      let lastPaintedWorkspaceId = null;
+      async function refreshCurrent() {
+        if (!currentId) return;
+        const response = await fetch(`/api/workspaces/${currentId}`);
+        if (response.status === 401) { location.href = "/"; return; }
+        if (response.status === 404) { currentId = null; localStorage.removeItem(CURRENT_KEY); return loadWorkspaces(); }
+        currentState = await response.json();
+        paintOverview(currentState);
+        paintBoard(currentState);
+        if (lastPaintedWorkspaceId !== currentId) {
+          paintSetupFields(currentState.workspace);
+          lastPaintedWorkspaceId = currentId;
+        }
+      }
+
+      function connectEvents() {
+        eventSource?.close();
+        if (!currentId) return;
+        eventSource = new EventSource(`/api/events/${currentId}`);
+        eventSource.addEventListener("message", () => setTimeout(refreshCurrent, 150));
+      }
+
+      // --- Setup: save / delete this workspace --------------------------------
+
+      el("save-workspace").addEventListener("click", async () => {
+        if (!currentId) return;
+        const payload = {
+          name: el("workspace-name").value.trim(),
+          githubRepo: el("github-repo").value.trim(),
+          jiraProjectKey: el("jira-project-key").value.trim(),
+          columns: {
+            todo: el("column-todo").value.trim(),
+            inProgress: el("column-progress").value.trim(),
+            inReview: el("column-review").value.trim(),
+            done: el("column-done").value.trim(),
+          },
+        };
+        const response = await fetch(`/api/workspaces/${currentId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const result = await response.json();
+        const message = el("save-message");
+        if (!response.ok) {
+          message.className = "save-message error";
+          message.textContent = result.error ?? "Could not save.";
+          return;
+        }
+        message.className = "save-message";
+        message.textContent = "Saved.";
+        await loadWorkspaces();
+      });
+
+      el("delete-workspace").addEventListener("click", async () => {
+        if (!currentId) return;
+        const workspace = workspaces.find((item) => item.id === currentId);
+        if (!confirm(`Delete "${workspace?.name ?? "this workspace"}"? This stops its sync and removes its history.`)) return;
+        await fetch(`/api/workspaces/${currentId}/delete`, { method: "POST" });
+        currentId = null;
+        localStorage.removeItem(CURRENT_KEY);
+        lastPaintedWorkspaceId = null;
+        await loadWorkspaces();
+      });
+
+      // --- New workspace modal -------------------------------------------------
+
+      function openNewWorkspaceModal() {
+        el("new-name").value = "";
+        el("new-repo").value = "";
+        el("new-project").value = "";
+        el("new-workspace-message").textContent = "";
+        el("new-workspace-modal").classList.add("open");
+        loadSetupOptions();
+      }
+      el("new-workspace-btn").addEventListener("click", openNewWorkspaceModal);
+      el("new-workspace-cancel").addEventListener("click", () => el("new-workspace-modal").classList.remove("open"));
+      el("new-workspace-create").addEventListener("click", async () => {
+        const payload = {
+          name: el("new-name").value.trim(),
+          githubRepo: el("new-repo").value.trim(),
+          jiraProjectKey: el("new-project").value.trim(),
+        };
+        const response = await fetch("/api/workspaces", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+        const result = await response.json();
+        if (!response.ok) {
+          el("new-workspace-message").textContent = result.error ?? "Could not create workspace.";
+          return;
+        }
+        el("new-workspace-modal").classList.remove("open");
+        currentId = result.id;
+        localStorage.setItem(CURRENT_KEY, currentId);
+        lastPaintedWorkspaceId = null;
+        showView("overview");
+        await loadWorkspaces();
+      });
 
       let optionsLoaded = false;
       async function loadSetupOptions() {
@@ -608,48 +783,9 @@
         } catch { /* keep current values usable if discovery is unavailable */ }
       }
 
-      el("save-settings").addEventListener("click", async () => {
-        const payload = {
-          workspaceName: el("workspace-name").value.trim(),
-          githubRepo: el("github-repo").value.trim(),
-          jiraBaseUrl: state.setup.settings.jiraBaseUrl,
-          jiraProjectKey: el("jira-project-key").value.trim(),
-          columns: {
-            todo: el("column-todo").value.trim(),
-            inProgress: el("column-progress").value.trim(),
-            inReview: el("column-review").value.trim(),
-            done: el("column-done").value.trim(),
-          },
-        };
-        const response = await fetch("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-        const result = await response.json();
-        const message = el("save-message");
-        if (!response.ok) {
-          message.className = "save-message error";
-          message.textContent = result.error ?? "Could not save.";
-          return;
-        }
-        message.className = "save-message";
-        message.textContent = result.resetAssociations ? "Saved — sources changed, associations rebuilt." : "Saved.";
-        setTimeout(refresh, 400);
-      });
-
-      async function refresh() {
-        const response = await fetch("/api/state");
-        if (response.status === 401) { location.href = "/"; return; }
-        if (!response.ok) return;
-        state = await response.json();
-        paintTopbar(state);
-        paintStats(state);
-        paintPairs(state);
-        paintBoard(state);
-        paintActivity(state);
-        paintSetup(state);
-      }
-
-      new EventSource("/api/events").addEventListener("message", () => setTimeout(refresh, 150));
-      refresh();
-      setInterval(refresh, 6000);
+      await loadWorkspaces();
+      setInterval(() => { if (currentId) refreshCurrent(); }, 6000);
+      setInterval(loadWorkspaces, 30000);
     </script>
   </body>
 </html>

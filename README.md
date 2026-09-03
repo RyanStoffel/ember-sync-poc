@@ -4,11 +4,15 @@ Proof of concept for the live GitHub-to-Jira synchronization named in the Ember
 requirements (section 3.4, and the project management view in the launch floor
 in section 4.1). It validates the claim in section 5 that both systems can be
 reliably observed and acted on programmatically, in both directions, without
-the two of them rewriting each other in a loop.
+the two of them rewriting each other in a loop, and it does so across any
+number of independent workspaces: each workspace pairs one GitHub repository
+with one Jira project and syncs on its own poll loop and history.
 
 Access is OAuth-only. There is no API-token or local `gh` login fallback: the
-application will not expose the workspace or start syncing until both GitHub
-and Jira have been connected through the real OAuth flow.
+application will not expose any workspace or start syncing until both GitHub
+and Jira have been connected through the real OAuth flow. Both providers are
+connected once, at the account level, and every workspace shares that
+connection.
 
 ## Run locally
 
@@ -76,15 +80,15 @@ export SESSION_SECRET="$(openssl rand -hex 32)"
 # Optional: only if pointing at real Jira Cloud instead of the local stand-in.
 export JIRA_USE_SIMULATOR=false
 export JIRA_BASE_URL=https://your-site.atlassian.net
-export JIRA_PROJECT_KEY=YOUR_KEY
 
 # Recommended once Jira Cloud is wired up: see "Jira webhook" below.
 export JIRA_WEBHOOK_SECRET="$(openssl rand -hex 20)"
 ```
 
-The GitHub repository and Jira project are then chosen from the Setup page
-inside the app, not from environment variables; those two variables only seed
-the defaults shown there before the first save.
+GitHub repositories and Jira projects are chosen per workspace, from the
+Setup page inside the app, never from environment variables. `JIRA_BASE_URL`
+only tells Ember which Atlassian site to talk to; it is shared by every
+workspace, since one Jira Cloud site can host many projects.
 
 ### Jira webhook
 
@@ -95,9 +99,10 @@ no request signing, so the webhook URL itself carries a shared secret:
 https://YOUR_HOST/webhooks/jira?token=YOUR_JIRA_WEBHOOK_SECRET
 ```
 
-Subscribe it to Issue created, Issue updated, and Comment created. Without
-`JIRA_WEBHOOK_SECRET` set, the endpoint accepts unsigned requests and Ember
-logs a warning at boot.
+Subscribe it to Issue created, Issue updated, and Comment created. One
+webhook covers every project on the site; Ember routes each payload to the
+workspace whose Jira project key matches. Without `JIRA_WEBHOOK_SECRET` set,
+the endpoint accepts unsigned requests and Ember logs a warning at boot.
 
 GitHub stays polling-based even in production (5 second interval by default);
 it never needed a public callback for events, so there is nothing to
@@ -122,7 +127,7 @@ flyctl secrets set --app YOUR_APP_NAME \
   ATLASSIAN_OAUTH_CLIENT_ID=... ATLASSIAN_OAUTH_CLIENT_SECRET=... \
   SESSION_SECRET=$(openssl rand -hex 32) \
   JIRA_WEBHOOK_SECRET=$(openssl rand -hex 20) \
-  JIRA_USE_SIMULATOR=false JIRA_BASE_URL=https://your-site.atlassian.net JIRA_PROJECT_KEY=YOUR_KEY
+  JIRA_USE_SIMULATOR=false JIRA_BASE_URL=https://your-site.atlassian.net
 
 flyctl deploy --app YOUR_APP_NAME
 ```
@@ -182,45 +187,55 @@ GitHub issue control labels mirror the intermediate statuses: `in-progress`
 and `in-review`. Jira must have an `In Review` status and an available
 transition to it.
 
-## Setup page
+## Workspaces and the Setup page
 
-The dashboard's Setup view is the onboarding flow:
+A workspace is one GitHub repository paired with one Jira project. The
+dashboard's rail lists every workspace and switches the whole view — board,
+activity, connected pairs, event stream — to whichever one is selected.
+Creating another workspace never repeats OAuth: both providers are connected
+once, at the account level, and every workspace reuses that connection.
 
-1. Connect GitHub and Jira, each with a real OAuth redirect, showing the
-   connected account's real name and avatar once signed in.
-2. Choose the GitHub repository (autocompleted from the repositories the
-   connected account can see).
-3. Choose the Jira project (autocompleted the same way).
-4. Choose the visible board-column labels.
-5. Save. Changing the repository or Jira project rebuilds the association
-   registry rather than mixing links from two different projects.
+The Setup view covers both layers:
 
-Settings persist to `data/settings.json`, and OAuth tokens persist to
-`data/oauth-tokens.enc` (encrypted). Both live under `EMBER_DATA_DIR`, which is
-a Fly volume in production.
+1. Connected accounts (once, account-wide): GitHub and Jira, each with a real
+   OAuth redirect, showing the connected account's real name and avatar.
+2. This workspace: its name, GitHub repository and Jira project (both
+   autocompleted from what the connected accounts can see), and its
+   board-column labels. Changing the repository or project rebuilds this
+   workspace's association registry rather than mixing links from two
+   different projects. A workspace can also be deleted, which stops its
+   poll loop and drops its history.
+
+Each workspace persists to its own directory,
+`data/workspaces/<id>/links.json`; the workspace list itself lives in
+`data/workspaces.json`. OAuth tokens persist once, account-wide, to
+`data/oauth-tokens.enc` (encrypted). All of it lives under `EMBER_DATA_DIR`,
+which is a Fly volume in production.
 
 ## Shape
 
 ```
 src/
-  main.ts              boot order: hydrate sessions, dashboard, Jira sim, engine
+  main.ts              boot order: hydrate sessions, dashboard, Jira sim, every workspace's engine
   server.ts             dashboard routes, SSE event stream, OAuth + webhook receivers
   oauth.ts              OAuth flows, session cookies, token refresh loop
   tokens.ts              encrypted token storage, provider token refresh calls
-  config.ts              one place to repoint either side
+  workspaces.ts          workspace CRUD, persisted to data/workspaces.json
+  config.ts              account-wide settings: OAuth, ports, the Jira site URL
   adf.ts                 Atlassian Document Format <-> plain text
-  events.ts              append-only decision log, fanned out over SSE
-  github/client.ts       GitHub REST, ETag conditional polling
-  jira/client.ts         Jira Cloud REST v3 (Basic auth or OAuth bearer)
-  jira-sim/               local Jira: REST v3 subset, transitions, webhooks
+  events.ts              append-only decision log type, fanned out over SSE
+  github/client.ts       GitHub REST, ETag conditional polling, parameterized by repo
+  jira/client.ts         Jira Cloud REST v3 (Basic auth or OAuth bearer), parameterized by project
+  jira-sim/               local Jira: REST v3 subset, transitions, webhooks, scoped by project
   sync/
-    engine.ts             bidirectional propagation, reconcile, conflicts
+    manager.ts            owns one SyncEngine per workspace; routes Jira webhooks by project key
+    engine.ts             bidirectional propagation, reconcile, conflicts, for one workspace
     mapping.ts            field and state mapping
-    links.ts              GitHub <-> Jira link registry plus last-known snapshots
+    links.ts              GitHub <-> Jira link registry plus last-known snapshots, one per workspace
     echo.ts                content fingerprints for our own GitHub writes
 web/
   login.html              OAuth-only sign-in screen
-  index.html               the project management view
+  index.html               the project management view, workspace switcher included
 ```
 
 ## Findings

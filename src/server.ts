@@ -3,24 +3,26 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { fromAdf, toAdf } from "./adf.js";
 import { config } from "./config.js";
 import { eventLog } from "./events.js";
-import { GithubClient } from "./github/client.js";
+import { GithubClient, type GithubRepoRef } from "./github/client.js";
 import { jiraAsHuman } from "./jira/client.js";
 import { jiraStore } from "./jira-sim/server.js";
-import { engine, type JiraWebhook } from "./sync/engine.js";
+import type { JiraWebhook } from "./sync/engine.js";
+import { workspaceManager } from "./sync/manager.js";
 import { portableLabels } from "./sync/mapping.js";
-import { connectorStatus, getConnectorSettings, saveConnectorSettings } from "./settings.js";
 import { authStatus, beginOAuth, completeOAuth, ensureSessionCookie, hasValidSession, signOut } from "./oauth.js";
-
+import { type BoardColumns, type WorkspaceRecord } from "./workspaces.js";
 /**
- * Dashboard: the project management view from the requirements, plus the Jira
- * webhook receiver and the controls that drive the demo.
+ * Dashboard: the project management view from the requirements, plus the
+ * Jira webhook receiver and the controls that drive the demo. One process
+ * hosts every workspace the user has configured; each workspace is one
+ * GitHub repository paired with one Jira project, with its own sync engine.
  *
  * Actions from the dashboard deliberately go through the ordinary GitHub and
  * Jira APIs as a human identity. They are never fed to the engine directly, so
  * everything the view shows is the engine reacting to real remote state.
  */
 
-/** Separate client from the engine's: writes made here must not be fingerprinted as our own. */
+/** Separate client from any engine's: writes made here must not be fingerprinted as our own. */
 const ghAsHuman = new GithubClient();
 
 const webRoot = new URL("../web/", import.meta.url).pathname;
@@ -35,6 +37,11 @@ export function startDashboard(): void {
   server.listen(config.ports.dashboard, () => {
     console.log(`[dashboard] http://localhost:${config.ports.dashboard}`);
   });
+}
+
+function repoRef(githubRepo: string): GithubRepoRef {
+  const [owner = "", repo = ""] = githubRepo.split("/");
+  return { owner, repo };
 }
 
 async function handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -53,7 +60,7 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   }
   if (method === "GET" && url.pathname === "/auth/github/callback") {
     const connected = await completeOAuth("github", request, response);
-    if (connected) await engine.start();
+    if (connected) await workspaceManager.startAll();
     return;
   }
   if (method === "GET" && url.pathname === "/auth/atlassian/start") {
@@ -62,7 +69,7 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   }
   if (method === "GET" && url.pathname === "/auth/atlassian/callback") {
     const connected = await completeOAuth("atlassian", request, response);
-    if (connected) await engine.start();
+    if (connected) await workspaceManager.startAll();
     return;
   }
   if (method === "POST" && url.pathname === "/auth/sign-out") {
@@ -89,22 +96,6 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
     response.end(JSON.stringify({ auth: authStatus() }));
     return;
   }
-  if (method === "GET" && url.pathname === "/api/state") {
-    if (!requireOAuth(response)) return;
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify(buildState()));
-    return;
-  }
-
-  if (method === "GET" && url.pathname === "/api/settings") {
-    if (!requireOAuth(response)) return;
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({
-      settings: getConnectorSettings(),
-      auth: { ...connectorStatus(), ...authStatus() },
-    }));
-    return;
-  }
 
   if (method === "GET" && url.pathname === "/api/setup/options") {
     if (!requireOAuth(response)) return;
@@ -117,15 +108,40 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
     return;
   }
 
-  if (method === "GET" && url.pathname === "/api/events") {
+  if (method === "GET" && url.pathname === "/api/workspaces") {
     if (!requireOAuth(response)) return;
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      auth: authStatus(),
+      workspaces: workspaceManager.list().map((workspace) => ({
+        ...workspace,
+        stats: workspaceManager.engineFor(workspace.id)?.stats,
+      })),
+    }));
+    return;
+  }
+
+  if (method === "GET" && url.pathname.startsWith("/api/workspaces/")) {
+    if (!requireOAuth(response)) return;
+    const workspace = workspaceManager.get(url.pathname.slice("/api/workspaces/".length));
+    if (!workspace) return notFound(response, "Workspace not found");
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify(buildWorkspaceState(workspace)));
+    return;
+  }
+
+  if (method === "GET" && url.pathname.startsWith("/api/events/")) {
+    if (!requireOAuth(response)) return;
+    const workspace = workspaceManager.get(url.pathname.slice("/api/events/".length));
+    if (!workspace) return notFound(response, "Workspace not found");
+    const workspaceLog = workspaceManager.engineFor(workspace.id)?.eventLog ?? eventLog;
     response.writeHead(200, {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
       connection: "keep-alive",
     });
     response.write("retry: 2000\n\n");
-    const unsubscribe = eventLog.subscribe((event) => {
+    const unsubscribe = workspaceLog.subscribe((event) => {
       response.write(`data: ${JSON.stringify(event)}\n\n`);
     });
     request.on("close", unsubscribe);
@@ -144,30 +160,70 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
       return;
     }
     if (!requireOAuth(response)) return;
-    await engine.onJiraWebhook(body as JiraWebhook);
+    const payload = body as JiraWebhook;
+    const projectKey = payload.issue?.fields.project.key;
+    const engine = projectKey ? workspaceManager.findByJiraProjectKey(projectKey) : undefined;
+    if (engine) await engine.onJiraWebhook(payload);
     response.writeHead(204).end();
     return;
   }
-  if (method === "POST" && url.pathname === "/api/settings") {
+
+  if (method === "POST" && url.pathname === "/api/workspaces") {
     if (!requireOAuth(response) || !requireSession(request, response)) return;
-    const previous = getConnectorSettings();
-    const next = saveConnectorSettings(body);
-    const resetAssociations =
-      previous.githubRepo !== next.githubRepo ||
-      previous.jiraBaseUrl !== next.jiraBaseUrl ||
-      previous.jiraProjectKey !== next.jiraProjectKey;
-    await engine.reconfigure(resetAssociations);
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({
-      settings: next,
-      auth: { ...connectorStatus(), ...authStatus() },
-      resetAssociations,
-    }));
+    try {
+      const record = await workspaceManager.create({
+        name: String(body.name ?? ""),
+        githubRepo: String(body.githubRepo ?? ""),
+        jiraProjectKey: String(body.jiraProjectKey ?? ""),
+        columns: body.columns,
+      });
+      response.writeHead(201, { "content-type": "application/json" });
+      response.end(JSON.stringify(record));
+    } catch (error) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: (error as Error).message }));
+    }
+    return;
+  }
+
+  if (method === "POST" && url.pathname.startsWith("/api/workspaces/") && url.pathname.endsWith("/delete")) {
+    if (!requireOAuth(response) || !requireSession(request, response)) return;
+    const id = url.pathname.slice("/api/workspaces/".length, -"/delete".length);
+    workspaceManager.remove(id);
+    response.writeHead(204).end();
+    return;
+  }
+
+  if (method === "POST" && url.pathname.startsWith("/api/workspaces/")) {
+    if (!requireOAuth(response) || !requireSession(request, response)) return;
+    const id = url.pathname.slice("/api/workspaces/".length);
+    try {
+      const patch: { name?: string; githubRepo?: string; jiraProjectKey?: string; columns?: Partial<BoardColumns> } = {};
+      if (typeof body.name === "string") patch.name = body.name;
+      if (typeof body.githubRepo === "string") patch.githubRepo = body.githubRepo;
+      if (typeof body.jiraProjectKey === "string") patch.jiraProjectKey = body.jiraProjectKey;
+      if (body.columns && typeof body.columns === "object") {
+        const columns: Partial<BoardColumns> = {};
+        for (const field of ["todo", "inProgress", "inReview", "done"] as const) {
+          if (typeof body.columns[field] === "string") columns[field] = body.columns[field];
+        }
+        patch.columns = columns;
+      }
+      const record = await workspaceManager.update(id, patch);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(record));
+    } catch (error) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: (error as Error).message }));
+    }
     return;
   }
 
   if (method === "POST" && url.pathname === "/api/pause") {
     if (!requireOAuth(response) || !requireSession(request, response)) return;
+    const workspace = workspaceManager.get(String(body.workspace ?? ""));
+    const engine = workspace ? workspaceManager.engineFor(workspace.id) : undefined;
+    if (!workspace || !engine) return notFound(response, "Workspace not found");
     await engine.setPaused(Boolean(body.paused));
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify(engine.stats));
@@ -176,13 +232,20 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
 
   if (method === "POST" && url.pathname === "/api/act") {
     if (!requireOAuth(response) || !requireSession(request, response)) return;
-    await act(String(body.action), body);
+    const workspace = workspaceManager.get(String(body.workspace ?? ""));
+    if (!workspace) return notFound(response, "Workspace not found");
+    await act(workspace, String(body.action), body);
     response.writeHead(202).end();
     return;
   }
 
   response.writeHead(404, { "content-type": "application/json" });
   response.end(JSON.stringify({ error: `No handler for ${method} ${url.pathname}` }));
+}
+
+function notFound(response: ServerResponse, message: string): void {
+  response.writeHead(404, { "content-type": "application/json" });
+  response.end(JSON.stringify({ error: message }));
 }
 
 function requireOAuth(response: ServerResponse): boolean {
@@ -202,32 +265,34 @@ function requireSession(request: IncomingMessage, response: ServerResponse): boo
 }
 
 /** Human-initiated edits on either system, issued exactly as an ordinary API client would. */
-async function act(action: string, input: Record<string, any>): Promise<void> {
+async function act(workspace: WorkspaceRecord, action: string, input: Record<string, any>): Promise<void> {
+  const ref = repoRef(workspace.githubRepo);
   const number = Number(input.number);
   const key = String(input.key ?? "");
 
   switch (action) {
     case "gh.create":
-      await ghAsHuman.createIssue({ title: String(input.title), body: String(input.body ?? "") });
+      await ghAsHuman.createIssue(ref, { title: String(input.title), body: String(input.body ?? "") });
       return;
     case "gh.retitle":
-      await ghAsHuman.updateIssue(number, { title: String(input.title) });
+      await ghAsHuman.updateIssue(ref, number, { title: String(input.title) });
       return;
     case "gh.comment":
-      await ghAsHuman.createComment(number, String(input.body));
+      await ghAsHuman.createComment(ref, number, String(input.body));
       return;
     case "gh.progress": {
-      const issue = engine.ghCache.get(number);
+      const engine = workspaceManager.engineFor(workspace.id);
+      const issue = engine?.ghCache.get(number);
       const labels = portableLabels(issue?.labels.map((label) => label.name) ?? []);
       const next = input.on ? [...labels, config.github.inProgressLabel] : labels;
-      await ghAsHuman.updateIssue(number, { labels: next });
+      await ghAsHuman.updateIssue(ref, number, { labels: next });
       return;
     }
     case "gh.state":
-      await ghAsHuman.updateIssue(number, { state: input.state === "closed" ? "closed" : "open" });
+      await ghAsHuman.updateIssue(ref, number, { state: input.state === "closed" ? "closed" : "open" });
       return;
     case "jira.create":
-      await jiraAsHuman.createIssue({
+      await jiraAsHuman.createIssue(workspace.jiraProjectKey, {
         summary: String(input.summary),
         description: toAdf(String(input.description ?? "")),
         labels: [],
@@ -247,12 +312,15 @@ async function act(action: string, input: Record<string, any>): Promise<void> {
   }
 }
 
-function buildState() {
-  const links = engine.links.links;
+function buildWorkspaceState(workspace: WorkspaceRecord) {
+  const engine = workspaceManager.engineFor(workspace.id);
+  const links = engine?.links.links ?? [];
   const linkByGithub = new Map(links.map((link) => [link.ghNumber, link]));
   const linkByJira = new Map(links.map((link) => [link.jiraKey.trim().toUpperCase(), link]));
-  const jiraIssues = config.jira.simulator ? jiraStore.all() : [...engine.jiraCache.values()];
-  const github = [...engine.ghCache.values()]
+  const jiraIssues = config.jira.simulator
+    ? jiraStore.allForProject(workspace.jiraProjectKey)
+    : [...(engine?.jiraCache.values() ?? [])];
+  const github = [...(engine?.ghCache.values() ?? [])]
     .sort((a, b) => a.number - b.number)
     .map((issue) => {
       const link = linkByGithub.get(issue.number);
@@ -287,16 +355,11 @@ function buildState() {
     };
   });
   return {
-    repo: `${config.github.owner}/${config.github.repo}`,
-    repoUrl: `https://github.com/${config.github.owner}/${config.github.repo}`,
+    workspace,
+    repoUrl: `https://github.com/${workspace.githubRepo}`,
     jiraBaseUrl: config.jira.baseUrl,
-    projectKey: config.jira.projectKey,
     pollMs: config.githubPollMs,
-    stats: engine.stats,
-    setup: {
-      settings: getConnectorSettings(),
-      auth: { ...connectorStatus(), ...authStatus() },
-    },
+    stats: engine?.stats,
     connections: links.map((link) => ({
       ghNumber: link.ghNumber,
       jiraKey: link.jiraKey,
@@ -306,7 +369,7 @@ function buildState() {
     })),
     github,
     jira,
-    events: eventLog.events,
-    counts: eventLog.counts(),
+    events: engine?.eventLog.events ?? [],
+    counts: engine?.eventLog.counts(),
   };
 }
