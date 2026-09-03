@@ -189,7 +189,7 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
   if (method === "POST" && url.pathname.startsWith("/api/workspaces/") && url.pathname.endsWith("/delete")) {
     if (!requireOAuth(response) || !requireSession(request, response)) return;
     const id = url.pathname.slice("/api/workspaces/".length, -"/delete".length);
-    workspaceManager.remove(id);
+    await workspaceManager.remove(id);
     response.writeHead(204).end();
     return;
   }

@@ -17,6 +17,8 @@ export type WorkspaceRecord = {
   jiraProjectKey: string;
   columns: BoardColumns;
   createdAt: string;
+  /** Id of the dynamic Jira webhook (registered over OAuth) scoped to this workspace's project. */
+  jiraWebhookId?: number;
 };
 
 const defaultColumns: BoardColumns = {
@@ -169,6 +171,14 @@ export class WorkspaceStore {
     if (patch.columns) record.columns = { ...record.columns, ...patch.columns };
     this.save();
     return { record, targetChanged };
+  }
+
+  /** Records which dynamic Jira webhook (if any) is currently registered for this workspace. */
+  setWebhookId(id: string, webhookId: number): void {
+    const record = this.get(id);
+    if (!record) return;
+    record.jiraWebhookId = webhookId;
+    this.save();
   }
 
   remove(id: string): void {

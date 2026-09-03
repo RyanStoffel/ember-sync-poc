@@ -1,5 +1,6 @@
 import { type BoardColumns, type WorkspaceRecord, workspaceStore, WorkspaceStore } from "../workspaces.js";
 import { SyncEngine, type WorkspaceTarget } from "./engine.js";
+import { ensureWebhook, removeWebhook } from "./webhook.js";
 
 function targetFor(record: WorkspaceRecord): WorkspaceTarget {
   const [owner = "", repo = ""] = record.githubRepo.split("/");
@@ -34,7 +35,11 @@ export class WorkspaceManager {
   }
 
   async startAll(): Promise<void> {
-    for (const engine of this.engines.values()) await engine.start();
+    for (const [id, engine] of this.engines) {
+      await engine.start();
+      const record = this.store.get(id);
+      if (record) await ensureWebhook(record).catch((error) => this.logWebhookIssue(record, error));
+    }
   }
 
   async create(input: { name: string; githubRepo: string; jiraProjectKey: string; columns?: Partial<BoardColumns> }): Promise<WorkspaceRecord> {
@@ -42,6 +47,7 @@ export class WorkspaceManager {
     const engine = new SyncEngine(record.id, targetFor(record), this.store.dataDirFor(record.id));
     this.engines.set(record.id, engine);
     await engine.start();
+    await ensureWebhook(record).catch((error) => this.logWebhookIssue(record, error));
     return record;
   }
 
@@ -49,16 +55,31 @@ export class WorkspaceManager {
     id: string,
     patch: { name?: string; githubRepo?: string; jiraProjectKey?: string; columns?: Partial<BoardColumns> },
   ): Promise<WorkspaceRecord> {
+    const previous = this.store.get(id);
+    const previousProjectKey = previous?.jiraProjectKey;
     const { record, targetChanged } = this.store.update(id, patch);
     const engine = this.engines.get(id);
     if (engine && targetChanged) await engine.retarget(targetFor(record));
+    if (previous && previousProjectKey !== record.jiraProjectKey) {
+      await removeWebhook(previous);
+      await ensureWebhook(record).catch((error) => this.logWebhookIssue(record, error));
+    }
     return record;
   }
 
-  remove(id: string): void {
+  async remove(id: string): Promise<void> {
+    const record = this.store.get(id);
     this.engines.get(id)?.stop();
     this.engines.delete(id);
     this.store.remove(id);
+    if (record) await removeWebhook(record);
+  }
+
+  private logWebhookIssue(record: WorkspaceRecord, error: unknown): void {
+    console.error(
+      `[ember] could not maintain the Jira webhook for "${record.name}": ${(error as Error).message}. ` +
+        `If this persists, confirm the Atlassian OAuth app has the manage:jira-webhook scope and reconnect Jira.`,
+    );
   }
 
   /** Finds the workspace to route a Jira webhook to, by the project key on its payload. */

@@ -127,6 +127,40 @@ export class JiraClient {
     const result = await this.request<{ comments: JiraComment[] }>("GET", `/rest/api/3/issue/${key}/comment`);
     return result.comments;
   }
+
+  /**
+   * Dynamic webhooks, registered over the OAuth connection instead of the
+   * classic per-site "System -> Webhooks" admin page. They are scoped by
+   * JQL, so one is registered per workspace's Jira project. They expire
+   * after 30 days and must be refreshed with `extendWebhookLife`.
+   */
+  async listWebhooks(): Promise<{ id: number; jqlFilter: string; events: string[]; expirationDate: number }[]> {
+    const result = await this.request<{
+      values: { id: number; jqlFilter: string; events: string[]; expirationDate: number }[];
+    }>("GET", "/rest/api/3/webhook?maxResults=100");
+    return result.values;
+  }
+
+  async registerWebhook(url: string, jqlFilter: string, events: string[]): Promise<number> {
+    const result = await this.request<{
+      webhookRegistrationResult: ({ createdWebhookId: number } | { errors: string[] })[];
+    }>("POST", "/rest/api/3/webhook", { url, webhooks: [{ jqlFilter, events }] });
+    const outcome = result.webhookRegistrationResult[0];
+    if (!outcome || "errors" in outcome) {
+      throw new Error(`Jira webhook registration failed: ${outcome && "errors" in outcome ? outcome.errors.join(", ") : "no result"}`);
+    }
+    return outcome.createdWebhookId;
+  }
+
+  async extendWebhookLife(webhookIds: number[]): Promise<void> {
+    if (webhookIds.length === 0) return;
+    await this.request<void>("PUT", "/rest/api/3/webhook/refresh", { webhookIds });
+  }
+
+  async deleteWebhooks(webhookIds: number[]): Promise<void> {
+    if (webhookIds.length === 0) return;
+    await this.request<void>("DELETE", "/rest/api/3/webhook", { webhookIds });
+  }
 }
 
 /** Identity the sync engine writes as. */

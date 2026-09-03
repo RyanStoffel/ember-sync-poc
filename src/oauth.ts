@@ -98,7 +98,7 @@ export function beginOAuth(provider: OAuthProvider, request: IncomingMessage, re
 
   params.set("audience", "api.atlassian.com");
   params.set("prompt", "consent");
-  params.set("scope", "read:jira-user read:jira-work write:jira-work offline_access");
+  params.set("scope", "read:jira-user read:jira-work write:jira-work manage:jira-webhook offline_access");
   response.writeHead(302, { location: `https://auth.atlassian.com/authorize?${params}` }).end();
 }
 

@@ -3,6 +3,7 @@ import { hydrateSessionsFromDisk, startTokenMaintenance } from "./oauth.js";
 import { startJiraSim } from "./jira-sim/server.js";
 import { startDashboard } from "./server.js";
 import { workspaceManager } from "./sync/manager.js";
+import { startWebhookMaintenance } from "./sync/webhook.js";
 
 /**
  * Boot order matters: the dashboard owns the Jira webhook endpoint and must
@@ -12,6 +13,7 @@ import { workspaceManager } from "./sync/manager.js";
  */
 await hydrateSessionsFromDisk();
 startTokenMaintenance();
+startWebhookMaintenance();
 startDashboard();
 if (config.jira.simulator) startJiraSim();
 if (!config.jira.simulator && !config.jiraWebhookSecret) {

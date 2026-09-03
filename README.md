@@ -55,8 +55,10 @@ https://YOUR_HOST/auth/github/callback
 Create an OAuth 2.0 (3LO) integration in the
 [Atlassian developer console](https://developer.atlassian.com/console/myapps/)
 with **resource-level** access. Add the Jira platform API with the classic
-scopes `read:jira-user`, `read:jira-work`, `write:jira-work`. Under
-**Authorization**, set the callback URL to:
+scopes `read:jira-user`, `read:jira-work`, `write:jira-work`, and
+`manage:jira-webhook`. The last one is what lets Ember register its own Jira
+webhook over the OAuth connection instead of requiring a manual step in Jira
+Settings. Under **Authorization**, set the callback URL to:
 
 ```text
 https://YOUR_HOST/auth/atlassian/callback
@@ -64,6 +66,10 @@ https://YOUR_HOST/auth/atlassian/callback
 
 The requested scopes also include `offline_access`, which is what lets a
 session survive a restart via a refresh token.
+
+Added `manage:jira-webhook` to an app that was already connected? Existing
+sessions carry the old scope set; disconnect and reconnect Jira from the
+Setup page so the new authorization actually includes it.
 
 ### Environment
 
@@ -92,17 +98,29 @@ workspace, since one Jira Cloud site can host many projects.
 
 ### Jira webhook
 
-Jira Cloud's classic webhook UI (**Jira Settings -> System -> Webhooks**) has
-no request signing, so the webhook URL itself carries a shared secret:
+Ember registers its own Jira webhook automatically, per workspace, the
+moment a workspace's Jira project connects — there is no Jira Settings page
+to visit. It uses Jira Cloud's dynamic webhook REST API
+(`POST /rest/api/3/webhook`), scoped by JQL to that one project
+(`project = KEY`), authenticated with the same OAuth token used for
+everything else. This is a different mechanism from the classic
+**Jira Settings -> System -> Webhooks** admin page; a dynamic webhook never
+appears there.
+
+Subscribed events: Issue created, Issue updated, Comment created. Dynamic
+webhooks expire after 30 days, so a maintenance loop re-extends every
+workspace's webhook once a day; if Jira drops one outright (revoked consent,
+repeated delivery failures), the same loop notices on its next pass and
+re-registers it. The webhook URL still carries the same shared-secret query
+parameter as before:
 
 ```text
 https://YOUR_HOST/webhooks/jira?token=YOUR_JIRA_WEBHOOK_SECRET
 ```
 
-Subscribe it to Issue created, Issue updated, and Comment created. One
-webhook covers every project on the site; Ember routes each payload to the
-workspace whose Jira project key matches. Without `JIRA_WEBHOOK_SECRET` set,
-the endpoint accepts unsigned requests and Ember logs a warning at boot.
+because Jira does not sign dynamic webhook deliveries any more than it signs
+classic ones. Without `JIRA_WEBHOOK_SECRET` set, the endpoint accepts
+unsigned requests and Ember logs a warning at boot.
 
 GitHub stays polling-based even in production (5 second interval by default);
 it never needed a public callback for events, so there is nothing to
