@@ -46,4 +46,4 @@ export const config = {
 
 export const jiraWebhookUrl =
   process.env.JIRA_WEBHOOK_URL ??
-  `http://127.0.0.1:${config.ports.dashboard}/webhooks/jira${config.jiraWebhookSecret ? `?token=${config.jiraWebhookSecret}` : ""}`;
+  `${config.oauth.baseUrl.replace(/\/$/, "") || `http://127.0.0.1:${config.ports.dashboard}`}/webhooks/jira${config.jiraWebhookSecret ? `?token=${config.jiraWebhookSecret}` : ""}`;
