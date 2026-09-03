@@ -43,7 +43,7 @@ export function jiraSnapshot(issue: JiraIssue): JiraSnapshot {
     summary: issue.fields.summary,
     description: fromAdf(issue.fields.description),
     status: issue.fields.status.name,
-    labels: [...issue.fields.labels].sort(),
+    labels: [...(issue.fields.labels ?? [])].sort(),
   };
 }
 

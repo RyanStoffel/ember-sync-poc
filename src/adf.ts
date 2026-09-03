@@ -32,7 +32,7 @@ export function toAdf(text: string): AdfDoc {
 /** ADF document back to plain text. Unknown block nodes are flattened, not dropped. */
 export function fromAdf(doc: AdfDoc | null | undefined): string {
   if (!doc) return "";
-  return doc.content.map(renderBlock).join("\n\n").trim();
+  return (doc.content ?? []).map(renderBlock).join("\n\n").trim();
 }
 
 function renderBlock(node: AdfNode): string {
